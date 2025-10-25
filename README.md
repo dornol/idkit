@@ -113,56 +113,71 @@ val generator = dev.dornol.idkit.snowflake.SnowFlakeIdGenerator(workerId = 0, da
 ## 변경 이력
 - 2025-10-25: LICENSE(MIT) 추가, README 라이선스 섹션 반영.
 - 2025-10-25: JUnit 5 기반 포괄 테스트 추가, README 초안 작성.
+- 2025-10-25: README — Central Publishing Portal 배포 가이드 갱신(Vanniktech + Central 토큰 방식), 좌표/자격증명/트러블슈팅 추가.
 
-## Maven Central 배포 가이드 (OSSRH)
-다음 설정은 이 저장소를 Maven Central(Sonatype OSSRH)에 배포하기 위한 것입니다. 본 저장소에는 관련 Gradle 설정이 포함되었습니다.
+## Central Publishing Portal 배포 가이드 (OSSRH EOL 대응)
+Sonatype OSSRH는 2025-06-30 EOL 예정입니다. 이 프로젝트는 Central Publishing Portal(이하 “Central”)로 직접 업로드하도록 Gradle를 구성했습니다. 아래 절차에 따라 배포를 진행하세요.
 
-1) OSSRH 계정 발급 및 프로젝트 등록
-- https://issues.sonatype.org/ 에서 계정 생성
-- 새 Project ticket 생성 (GroupId: `dev.dornol`) 후 승인 대기
+1) Central 계정 및 네임스페이스 검증
+- https://central.sonatype.com/ 에 로그인합니다.
+- Organization/Namespaces에서 배포 네임스페이스를 검증합니다.
+  - 본 프로젝트 좌표는 `io.github.dornol:idkit` 이므로 `io.github.dornol` 네임스페이스를 소유(verify)해야 합니다.
+  - `io.github.*` 패턴은 GitHub 저장소 소유권 검증으로 처리됩니다. GitHub `dornol/idkit` 저장소가 공개(public)이고, Central에 연결되어 있어야 합니다.
 
-2) GPG 키 생성 (서명용)
-- gpg 설치 후 키 생성: `gpg --full-generate-key`
-- 키 확인: `gpg --list-secret-keys --keyid-format=long`
-- ASCII armor로 개인키 내보내기: `gpg --armor --export-secret-keys <KEY_ID>`
+2) Publishing Token 생성
+- Central 포털에서 Publishing Token을 생성합니다.
+- Token(=username), Secret(=password) 한 쌍이 발급됩니다. 노출되지 않도록 안전하게 보관하세요.
 
-3) Gradle 자격증명/서명키 설정 (로컬 사용자 홈의 `~/.gradle/gradle.properties` 권장)
+3) Gradle 자격 증명 설정 (~/.gradle/gradle.properties 권장)
+- 이 프로젝트는 Vanniktech Maven Publish 플러그인으로 Central(Portal)에 업로드합니다.
+- 필요한 크리덴셜 키 이름은 다음과 같습니다.
 ```
-# Sonatype
-ossrhUsername=YOUR_OSSRH_USERNAME
-ossrhPassword=YOUR_OSSRH_PASSWORD
+# Central Publishing Portal (Vanniktech Maven Publish)
+mavenCentralUsername=YOUR_CENTRAL_TOKEN
+mavenCentralPassword=YOUR_CENTRAL_SECRET
 
-# Signing
-signing.keyId=YOUR_KEY_ID
-signing.password=YOUR_KEY_PASSWORD
-signing.key=-----BEGIN PGP PRIVATE KEY BLOCK-----\n...
+# Signing (현재 build.gradle.kts는 서명을 활성화함)
+# Central은 서명이 필수는 아니지만, 현재 설정은 모든 퍼블리케이션을 서명합니다.
+# 키가 없다면 빌드가 실패할 수 있으니 키를 제공하거나, 서명을 비활성화하도록 스크립트를 조정하세요.
+signing.keyId=XXXXXXXXXXXXXXXX
+signing.password=XXXXXXXX
+# 둘 중 하나를 사용하세요 (secretKeyRingFile 또는 in-memory key)
+signing.secretKeyRingFile=/path/to/your/secring.gpg
+# 또는
+# signing.key=-----BEGIN PGP PRIVATE KEY BLOCK-----\n...
 ```
-환경변수를 사용하려면 `OSSRH_USERNAME`, `OSSRH_PASSWORD`, `SIGNING_KEY_ID`, `SIGNING_PASSWORD`, `SIGNING_KEY`를 설정하세요.
 
-4) 프로젝트 메타데이터 채우기
-- `build.gradle.kts`의 POM 부분 TODO를 실제 값으로 변경하세요.
-  - `url`, `scm.connection`, `scm.developerConnection`, `issueManagement.url`, 개발자 이메일 등
+4) POM 메타데이터 확인
+- `build.gradle.kts`의 `mavenPublishing { pom { ... } }` 블록이 실제 정보를 가리키는지 확인하세요.
+  - name/description/url, licenses, developers, scm(connection/developerConnection/url) 등
 
-5) 로컬 검증
+5) 로컬 검증 (권장)
 ```
 ./gradlew.bat clean build publishToMavenLocal   # Windows
 ./gradlew clean build publishToMavenLocal       # macOS/Linux
 ```
+- 생성된 POM/JAR(Javadoc/Sources 포함) 구조가 올바른지 확인합니다.
 
-6) 스냅샷/릴리스 배포
-- 스냅샷: 버전을 `1.0-SNAPSHOT`으로 두고 `./gradlew -Prelease=false nexusPublish`
-- 릴리스: 버전을 `1.0.0`처럼 SNAPSHOT이 아닌 값으로 설정 후 다음 실행
+6) 릴리스 배포 (Central로 업로드)
+- 버전이 SNAPSHOT이 아닌 경우(예: `0.1.0`, `1.0.0`) 다음 명령으로 업로드합니다.
 ```
-./gradlew nexusPublish
+./gradlew publish
 ```
-플러그인이 자동으로 staging → close → release를 수행합니다.
+- Vanniktech 플러그인이 Central Publishing Portal 엔드포인트로 업로드하며, 별도의 staging/close/release 과정이 없습니다.
 
-주의: 비공개 키, 패스워드 등 비밀정보는 절대 저장소에 커밋하지 마세요.
+7) 스냅샷 배포 (선택)
+- 필요 시 별도의 스냅샷 리포지터리를 사용할 수 있습니다. 본 프로젝트 스크립트에는 Central Snapshot이 기본 포함되어 있지 않습니다. 별도 호스팅이 필요하면 `build.gradle.kts`에 스냅샷 리포지터리를 추가하세요.
 
-배포 좌표(예상):
-- `groupId`: `dev.dornol`
+문제 해결(FAQ)
+- 401 Unauthorized: `mavenCentralUsername/mavenCentralPassword` 값이 올바른지, 토큰이 활성 상태인지 확인.
+- 403/409 Namespace 문제: Central에서 `io.github.dornol` 네임스페이스 검증을 완료했는지 확인.
+- POM 검증 오류: `name/description/url/scm/licenses/developers` 등 필수 메타데이터가 채워졌는지 확인.
+- 서명 실패: 현재 스크립트는 `signing { sign(publishing.publications) }`로 서명합니다. 키를 제공하거나 서명 비활성화로 조정하세요.
+
+배포 좌표(본 프로젝트)
+- `groupId`: `io.github.dornol`
 - `artifactId`: `idkit`
-- `version`: `1.0.0` (예시)
+- `version`: `0.1.0` (현재)
 
 ## 파일 구조
 - `src/main/kotlin/dev/dornol/idkit/snowflake/SnowFlakeIdGenerator.kt` — Snowflake ID 생성기 구현

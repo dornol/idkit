@@ -1,10 +1,11 @@
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     id("java")
     kotlin("jvm")
-    id("maven-publish")
+    id("com.vanniktech.maven.publish") version "0.28.0"
     id("signing")
     id("org.jetbrains.dokka") version "1.9.20"
-    id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
 }
 
 group = "dev.dornol"
@@ -21,9 +22,11 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
 }
 
-// Package Kotlin sources
-java {
-    withSourcesJar()
+tasks.test {
+    useJUnitPlatform()
+}
+kotlin {
+    jvmToolchain(21)
 }
 
 // Generate Javadoc-like HTML for Kotlin using Dokka and package it as javadocJar (required by Maven Central)
@@ -34,79 +37,53 @@ val javadocJar by tasks.registering(Jar::class) {
     archiveClassifier.set("javadoc")
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("mavenJava") {
-            from(components["java"])
-            artifact(javadocJar.get())
+signing {
+    sign(publishing.publications)
+}
 
-            pom {
-                name.set("idkit")
-                description.set("Kotlin/JVM Snowflake ID generator library.")
-                url.set("https://github.com/dornol/idkit")
+mavenPublishing {
+    signAllPublications()
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
 
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://opensource.org/license/mit")
-                        distribution.set("repo")
-                    }
-                }
-                developers {
-                    developer {
-                        id.set("dornol")
-                        name.set("dhkim")
-                        email.set("dhkim@dornol.dev")
-                    }
-                }
-                scm {
-                    url.set("https://github.com/dornol/idkit")
-                    connection.set("scm:git:https://github.com/dornol/idkit.git")
-                    developerConnection.set("scm:git:ssh://git@github.com/dornol/idkit.git")
-                }
-                issueManagement {
-                    system.set("GitHub Issues")
-                    url.set("https://github.com/dornol/idkit/issues")
-                }
+    coordinates("io.github.dornol", "idkit", "$version") // 네임 스페이스, 라이브러리 이름, 버전 순서로 작성
+
+    // POM 설정
+    pom {
+        /**
+        name = '[라이브러리 이름]'
+        description = '[라이브러리 설명]'
+        url = '[오픈소스 Repository Url]'
+         */
+        name = "idkit"
+        description = "Snow Flake Id Generator"
+        url = "<https://github.com/dornol/idkit>"
+
+        // 라이선스 정보
+        licenses {
+            license {
+                name = "MIT"
+                url = "<https://github.com/dornol/idkit/blob/main/LICENSE>"
             }
         }
-    }
-}
 
-// Signing setup — reads keys from gradle.properties or environment variables
-// Supported properties (preferred in ~/.gradle/gradle.properties):
-//   signing.keyId, signing.password, signing.key (armored PGP private key)
-// Or environment variables: SIGNING_KEY_ID, SIGNING_PASSWORD, SIGNING_KEY
-val signingKey: String? = (findProperty("signing.key") as String?) ?: System.getenv("SIGNING_KEY")
-val signingKeyId: String? = (findProperty("signing.keyId") as String?) ?: System.getenv("SIGNING_KEY_ID")
-val signingPassword: String? = (findProperty("signing.password") as String?) ?: System.getenv("SIGNING_PASSWORD")
+        // 개발자 정보
+        developers {
+            developer {
+                id = "dornol"
+                name = "dhkim"
+                email = "dhkim@dornol.dev"
+            }
+        }
 
-signing {
-    isRequired = signingKey != null && !project.version.toString().endsWith("-SNAPSHOT")
-    if (signingKey != null) {
-        useInMemoryPgpKeys(signingKeyId, signingKey, signingPassword)
-        sign(publishing.publications)
-    }
-}
-
-// Sonatype (OSSRH) Nexus publishing configuration
-// Provide credentials via properties: ossrhUsername / ossrhPassword or env vars OSSRH_USERNAME / OSSRH_PASSWORD
-nexusPublishing {
-    this.repositories {
-        sonatype {
-            // Using the newer s01 host
-            nexusUrl.set(uri("https://s01.oss.sonatype.org/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://s01.oss.sonatype.org/content/repositories/snapshots/"))
-            username.set((findProperty("ossrhUsername") as String?) ?: System.getenv("OSSRH_USERNAME"))
-            password.set((findProperty("ossrhPassword") as String?) ?: System.getenv("OSSRH_PASSWORD"))
+        /**
+        connection = 'scm:git:github.com/[Github 사용자명]/[오픈소스 Repository 이름].git'
+        developerConnection = 'scm:git:ssh://github.com/[Github 사용자명]/[오픈소스 Repository 이름].git'
+        url = '<https://github.com/>[Github 사용자명]/[오픈소스 Repository 이름]/tree/[배포 브랜치명]'
+         */
+        scm {
+            connection = "scm:git:github.com/dornol/idkit.git"
+            developerConnection = "scm:git:ssh://github.com:dornol/idkit.git"
+            url = "<https://github.com/dornol/idkit/tree/main>"
         }
     }
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-
-kotlin {
-    jvmToolchain(21)
 }
