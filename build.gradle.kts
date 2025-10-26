@@ -1,15 +1,16 @@
 import com.vanniktech.maven.publish.SonatypeHost
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     id("java")
-    kotlin("jvm")
+    kotlin("jvm") version "1.9.25"
     id("com.vanniktech.maven.publish") version "0.28.0"
     id("signing")
     id("org.jetbrains.dokka") version "1.9.20"
 }
 
 group = "dev.dornol"
-version = "0.1.0"
+version = "0.1.1"
 
 repositories {
     mavenCentral()
@@ -26,7 +27,19 @@ tasks.test {
     useJUnitPlatform()
 }
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(8)
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    }
+}
+
+tasks.withType<KotlinCompile> {
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
 }
 
 // Generate Javadoc-like HTML for Kotlin using Dokka and package it as javadocJar (required by Maven Central)
