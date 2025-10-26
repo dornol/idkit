@@ -1,4 +1,4 @@
-package dev.dornol.idkit.snowflake
+package io.github.dornol.idkit.snowflake
 
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -6,38 +6,41 @@ import org.junit.jupiter.api.assertThrows
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.AbstractMap
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-class SnowFlakeIdGeneratorTest {
+class SnowflakeIdGeneratorTest {
 
     @Test
     fun `constructor rejects out of range workerId and dataCenterId`() {
         // workerId < 0
         assertThrows<IllegalArgumentException> {
-            SnowFlakeIdGenerator(-1, 0)
+            SnowflakeIdGenerator(-1, 0)
         }
         // workerId > MAX
         assertThrows<IllegalArgumentException> {
-            SnowFlakeIdGenerator(SnowFlakeIdGenerator.MAX_WORKER_ID + 1, 0)
+            SnowflakeIdGenerator(SnowflakeIdGenerator.MAX_WORKER_ID + 1, 0)
         }
         // dataCenterId < 0
         assertThrows<IllegalArgumentException> {
-            SnowFlakeIdGenerator(0, -1)
+            SnowflakeIdGenerator(0, -1)
         }
         // dataCenterId > MAX
         assertThrows<IllegalArgumentException> {
-            SnowFlakeIdGenerator(0, SnowFlakeIdGenerator.MAX_DATA_CENTER_ID + 1)
+            SnowflakeIdGenerator(0, SnowflakeIdGenerator.MAX_DATA_CENTER_ID + 1)
         }
         // boundary OK
-        SnowFlakeIdGenerator(SnowFlakeIdGenerator.MAX_WORKER_ID, SnowFlakeIdGenerator.MAX_DATA_CENTER_ID)
+        SnowflakeIdGenerator(SnowflakeIdGenerator.MAX_WORKER_ID, SnowflakeIdGenerator.MAX_DATA_CENTER_ID)
     }
 
     @Test
     fun `ids are strictly increasing and positive`() {
-        val gen = SnowFlakeIdGenerator(workerId = 1, dataCenterId = 1)
+        val gen = SnowflakeIdGenerator(workerId = 1, dataCenterId = 1)
         var prev = gen.nextId()
         assertTrue(prev > 0)
         repeat(20_000) {
@@ -51,20 +54,20 @@ class SnowFlakeIdGeneratorTest {
     @Test
     fun `bit fields are placed correctly`() {
         // Use non-zero worker and dc to make the fields visible
-        val workerId: Long = SnowFlakeIdGenerator.MAX_WORKER_ID
-        val dcId: Long = SnowFlakeIdGenerator.MAX_DATA_CENTER_ID
-        val gen = SnowFlakeIdGenerator(workerId, dcId)
+        val workerId: Long = SnowflakeIdGenerator.MAX_WORKER_ID
+        val dcId: Long = SnowflakeIdGenerator.MAX_DATA_CENTER_ID
+        val gen = SnowflakeIdGenerator(workerId, dcId)
 
         val id = gen.nextId()
 
-        val sequence = id and SnowFlakeIdGenerator.MAX_SEQUENCE
-        val extractedWorker = (id shr SnowFlakeIdGenerator.WORKER_ID_LEFT_SHIFT) and SnowFlakeIdGenerator.MAX_WORKER_ID
-        val extractedDc = (id shr SnowFlakeIdGenerator.DATA_CENTER_ID_LEFT_SHIFT) and SnowFlakeIdGenerator.MAX_DATA_CENTER_ID
-        val timestampPortion = id shr SnowFlakeIdGenerator.TIMESTAMP_LEFT_SHIFT
+        val sequence = id and SnowflakeIdGenerator.MAX_SEQUENCE
+        val extractedWorker = (id shr SnowflakeIdGenerator.WORKER_ID_LEFT_SHIFT) and SnowflakeIdGenerator.MAX_WORKER_ID
+        val extractedDc = (id shr SnowflakeIdGenerator.DATA_CENTER_ID_LEFT_SHIFT) and SnowflakeIdGenerator.MAX_DATA_CENTER_ID
+        val timestampPortion = id shr SnowflakeIdGenerator.TIMESTAMP_LEFT_SHIFT
 
         assertEquals(workerId, extractedWorker)
         assertEquals(dcId, extractedDc)
-        assertTrue(sequence in 0..SnowFlakeIdGenerator.MAX_SEQUENCE, "Sequence must be within range")
+        assertTrue(sequence in 0..SnowflakeIdGenerator.MAX_SEQUENCE, "Sequence must be within range")
         assertTrue(timestampPortion >= 0, "Timestamp portion must be non-negative")
 
         // Validate timestamp portion roughly (<= now - epoch)
@@ -79,7 +82,7 @@ class SnowFlakeIdGeneratorTest {
     fun `concurrent generation produces unique ids`() {
         val threads = 8
         val perThread = 5000
-        val gen = SnowFlakeIdGenerator(workerId = 3, dataCenterId = 2)
+        val gen = SnowflakeIdGenerator(workerId = 3, dataCenterId = 2)
 
         val pool = Executors.newFixedThreadPool(threads)
         val gate = CountDownLatch(1)
@@ -117,8 +120,8 @@ class SnowFlakeIdGeneratorTest {
  * A very small, specialized mutable map for primitive long keys to boolean that we can wrap as a Set via Collections.newSetFromMap.
  * This avoids boxing overhead in hot loops during the concurrency test and keeps dependencies minimal.
  */
-private class LongHashMapBackedMutableMap(initialCapacity: Int) : java.util.AbstractMap<Long, Boolean>(), java.util.concurrent.ConcurrentMap<Long, Boolean> {
-    private val inner = java.util.concurrent.ConcurrentHashMap<Long, Boolean>(initialCapacity)
+private class LongHashMapBackedMutableMap(initialCapacity: Int) : AbstractMap<Long, Boolean>(), ConcurrentMap<Long, Boolean> {
+    private val inner = ConcurrentHashMap<Long, Boolean>(initialCapacity)
 
     override val entries: MutableSet<MutableMap.MutableEntry<Long, Boolean>>
         get() = inner.entries

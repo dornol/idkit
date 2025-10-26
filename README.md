@@ -2,7 +2,7 @@
 
 Kotlin/JVM 기반의 간단하고 빠른 Snowflake ID 생성기.
 
-이 저장소는 64비트 Long 정수로 고유 ID를 생성하는 `SnowFlakeIdGenerator`를 제공합니다. 트위터 Snowflake 알고리즘을 바탕으로 타임스탬프 + 데이터센터 ID + 워커 ID + 시퀀스 조합으로 충돌 없이 ID를 생성합니다.
+이 저장소는 64비트 Long 정수로 고유 ID를 생성하는 `SnowflakeIdGenerator`를 제공합니다. 트위터 Snowflake 알고리즘을 바탕으로 타임스탬프 + 데이터센터 ID + 워커 ID + 시퀀스 조합으로 충돌 없이 ID를 생성합니다.
 
 - 언어/런타임: Kotlin, JVM (JDK 21)
 - 빌드: Gradle Kotlin DSL
@@ -34,15 +34,15 @@ Kotlin/JVM 기반의 간단하고 빠른 Snowflake ID 생성기.
 Gradle 주요 설정은 `build.gradle.kts`에 있으며, JDK 21 toolchain과 JUnit 5 구성을 사용합니다.
 
 ## 사용법
-`SnowFlakeIdGenerator`는 스레드 안전합니다. 하나의 인스턴스를 여러 스레드에서 함께 사용하여도 됩니다.
+`SnowflakeIdGenerator`는 스레드 안전합니다. 하나의 인스턴스를 여러 스레드에서 함께 사용하여도 됩니다.
 
 ```kotlin
 fun main() {
     // 워커/데이터센터 ID는 0..31 범위
-    val generator = dev.dornol.idkit.snowflake.SnowFlakeIdGenerator(workerId = 1, dataCenterId = 2)
+    val generator = io.github.dornol.idkit.snowflake.SnowflakeIdGenerator(workerId = 1, dataCenterId = 2)
 
-    val id: Long = generator.nextId()
-    println("generated id = $id")
+    val io: Long = generator.nextId()
+    println("generated io = $io")
 }
 ```
 
@@ -51,7 +51,7 @@ fun main() {
 ```kotlin
 val customEpoch = java.time.LocalDateTime.of(2020, 1, 1, 0, 0)
     .atZone(java.time.ZoneId.of("UTC"))
-val generator = dev.dornol.idkit.snowflake.SnowFlakeIdGenerator(workerId = 0, dataCenterId = 0, epochStart = customEpoch)
+val generator = io.github.dornol.idkit.snowflake.SnowflakeIdGenerator(workerId = 0, dataCenterId = 0, epochStart = customEpoch)
 ```
 
 ## 비트 구성
@@ -87,7 +87,7 @@ val generator = dev.dornol.idkit.snowflake.SnowFlakeIdGenerator(workerId = 0, da
 - 단일 프로세스 내 여러 인스턴스를 쓴다면, 워커/데이터센터 ID를 고유하게 할당해야 전역 충돌을 방지할 수 있습니다.
 
 ## 테스트
-다음과 같은 시나리오를 검증하는 JUnit 5 테스트가 포함되어 있습니다 (`src/test/kotlin/dev/dornol/idkit/snowflake/SnowFlakeIdGeneratorTest.kt`).
+다음과 같은 시나리오를 검증하는 JUnit 5 테스트가 포함되어 있습니다 (`src/test/kotlin/io/dornol/idkit/snowflake/SnowflakeIdGeneratorTest.kt`).
 
 - 생성자 파라미터 검증 (경계값 포함)
 - 단조 증가성 (20,000개 연속 생성)
@@ -180,8 +180,8 @@ signing.secretKeyRingFile=/path/to/your/secring.gpg
 - `version`: `0.1.0` (현재)
 
 ## 파일 구조
-- `src/main/kotlin/dev/dornol/idkit/snowflake/SnowFlakeIdGenerator.kt` — Snowflake ID 생성기 구현
-- `src/test/kotlin/dev/dornol/idkit/snowflake/SnowFlakeIdGeneratorTest.kt` — 단위/동시성 테스트
+- `src/main/kotlin/io/dornol/idkit/snowflake/SnowflakeIdGenerator.kt` — Snowflake ID 생성기 구현
+- `src/test/kotlin/io/dornol/idkit/snowflake/SnowflakeIdGeneratorTest.kt` — 단위/동시성 테스트
 - `build.gradle.kts` — Gradle 설정 (JDK 21, JUnit 5)
 
 ---

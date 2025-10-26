@@ -1,4 +1,4 @@
-package dev.dornol.idkit.snowflake
+package io.github.dornol.idkit.snowflake
 
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -13,8 +13,10 @@ import java.time.ZonedDateTime
  * @param workerId 노드(worker) ID, 0..31
  * @param dataCenterId 데이터센터 ID, 0..31
  * @param epochStart Snowflake epoch 시작 시점, 기본값 2025-01-01T00:00(Asia/Seoul)
+ *
+ * @see <a href="https://github.com/twitter/snowflake/tree/snowflake-2010">Twitter Snowflake</a>
  */
-class SnowFlakeIdGenerator(
+class SnowflakeIdGenerator(
     private val workerId: Long,
     private val dataCenterId: Long,
     epochStart: ZonedDateTime = LocalDateTime.of(2025, 1, 1, 0, 0)
