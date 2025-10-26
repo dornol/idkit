@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "dev.dornol"
-version = "0.1.1"
+version = "0.2.0"
 
 repositories {
     mavenCentral()
@@ -27,18 +27,18 @@ tasks.test {
     useJUnitPlatform()
 }
 kotlin {
-    jvmToolchain(8)
+    jvmToolchain(11)
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(8))
+        languageVersion.set(JavaLanguageVersion.of(11))
     }
 }
 
 tasks.withType<KotlinCompile> {
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "11"
     }
 }
 
