@@ -1,5 +1,6 @@
 package io.github.dornol.idkit.snowflake
 
+import io.github.dornol.idkit.IdGenerator
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -21,7 +22,7 @@ class SnowflakeIdGenerator(
     private val dataCenterId: Long,
     epochStart: ZonedDateTime = LocalDateTime.of(2025, 1, 1, 0, 0)
         .atZone(ZoneId.of("Asia/Seoul")),
-) {
+) : IdGenerator<Long> {
 
     companion object {
         /** Data center ID 비트 수 */
@@ -74,7 +75,7 @@ class SnowflakeIdGenerator(
      * @return 생성된 고유 ID (Long)
      */
     @Synchronized
-    fun nextId(): Long {
+    override fun nextId(): Long {
         var timestamp = currentTimestamp()
 
         if (timestamp < lastGeneratedTimestamp) {

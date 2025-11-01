@@ -1,0 +1,40 @@
+name: maven-publish.yml
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment: dornol
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 11
+          cache: gradle
+
+      - name: Write GPG key to file
+        run: |
+          mkdir -p ~/.gradle
+          echo "${{ secrets.SIGNING_SECRET_KEY }}" | base64 --decode > ~/.gradle/secring.gpg
+
+
+      - name: Set up gradle.properties
+        run: |
+          echo "mavenCentralUsername=${{ secrets.MAVEN_CENTRAL_USERNAME }}" >> ~/.gradle/gradle.properties
+          echo "mavenCentralPassword=${{ secrets.MAVEN_CENTRAL_PASSWORD }}" >> ~/.gradle/gradle.properties
+          echo "signing.password=${{ secrets.SIGNING_PASSWORD }}" >> ~/.gradle/gradle.properties
+          echo "signing.keyId=${{ secrets.SIGNING_KEYID }}" >> ~/.gradle/gradle.properties
+          echo "signing.secretKeyRingFile=$(echo ~/.gradle/secring.gpg)" >> ~/.gradle/gradle.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build & Publish
+        run: ./gradlew publish --no-daemon
