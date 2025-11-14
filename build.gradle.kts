@@ -9,13 +9,14 @@ plugins {
 }
 
 group = "io.github.dornol"
-version = "1.1.0"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
+    api("org.slf4j:slf4j-api:2.0.17")
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
