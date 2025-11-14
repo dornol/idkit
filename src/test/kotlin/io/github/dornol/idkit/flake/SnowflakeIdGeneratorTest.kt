@@ -1,11 +1,9 @@
-package io.github.dornol.idkit.snowflake
+package io.github.dornol.idkit.flake
 
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.time.LocalDateTime
-import java.time.ZoneId
-import java.time.ZonedDateTime
+import java.time.Instant
 import java.util.AbstractMap
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -15,6 +13,14 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class SnowflakeIdGeneratorTest {
+    private val workerIdBits = 5
+    private val datacenterIdBits = 5
+    private val sequenceBits = 12
+    private val maxWorkerId = (1L shl workerIdBits) - 1
+    private val maxDatacenterId = (1L shl datacenterIdBits) - 1
+    private val timestampLeftShift = datacenterIdBits + workerIdBits + sequenceBits
+    private val datacenterIdLeftShift = workerIdBits + sequenceBits
+    private val workerIdLeftShift = sequenceBits
 
     @Test
     fun `constructor rejects out of range workerId and dataCenterId`() {
@@ -24,7 +30,7 @@ class SnowflakeIdGeneratorTest {
         }
         // workerId > MAX
         assertThrows<IllegalArgumentException> {
-            SnowflakeIdGenerator(SnowflakeIdGenerator.MAX_WORKER_ID + 1, 0)
+            SnowflakeIdGenerator(maxWorkerId + 1, 0)
         }
         // dataCenterId < 0
         assertThrows<IllegalArgumentException> {
@@ -32,10 +38,10 @@ class SnowflakeIdGeneratorTest {
         }
         // dataCenterId > MAX
         assertThrows<IllegalArgumentException> {
-            SnowflakeIdGenerator(0, SnowflakeIdGenerator.MAX_DATA_CENTER_ID + 1)
+            SnowflakeIdGenerator(0, maxDatacenterId + 1)
         }
         // boundary OK
-        SnowflakeIdGenerator(SnowflakeIdGenerator.MAX_WORKER_ID, SnowflakeIdGenerator.MAX_DATA_CENTER_ID)
+        SnowflakeIdGenerator(maxWorkerId, maxDatacenterId)
     }
 
     @Test
@@ -54,25 +60,25 @@ class SnowflakeIdGeneratorTest {
     @Test
     fun `bit fields are placed correctly`() {
         // Use non-zero worker and dc to make the fields visible
-        val workerId: Long = SnowflakeIdGenerator.MAX_WORKER_ID
-        val dcId: Long = SnowflakeIdGenerator.MAX_DATA_CENTER_ID
+        val workerId: Long = maxWorkerId
+        val dcId: Long = maxDatacenterId
         val gen = SnowflakeIdGenerator(workerId, dcId)
 
         val id = gen.nextId()
 
-        val sequence = id and SnowflakeIdGenerator.MAX_SEQUENCE
-        val extractedWorker = (id shr SnowflakeIdGenerator.WORKER_ID_LEFT_SHIFT) and SnowflakeIdGenerator.MAX_WORKER_ID
-        val extractedDc = (id shr SnowflakeIdGenerator.DATA_CENTER_ID_LEFT_SHIFT) and SnowflakeIdGenerator.MAX_DATA_CENTER_ID
-        val timestampPortion = id shr SnowflakeIdGenerator.TIMESTAMP_LEFT_SHIFT
+        val sequence = id and gen.maxSequence
+        val extractedWorker = (id shr workerIdLeftShift) and gen.maxWorkerId
+        val extractedDc = (id shr datacenterIdLeftShift) and gen.maxDatacenterId
+        val timestampPortion = id shr timestampLeftShift
 
         assertEquals(workerId, extractedWorker)
         assertEquals(dcId, extractedDc)
-        assertTrue(sequence in 0..SnowflakeIdGenerator.MAX_SEQUENCE, "Sequence must be within range")
+        assertTrue(sequence in 0..gen.maxSequence, "Sequence must be within range")
         assertTrue(timestampPortion >= 0, "Timestamp portion must be non-negative")
 
         // Validate timestamp portion roughly (<= now - epoch)
-        val defaultEpoch: ZonedDateTime = LocalDateTime.of(2025, 1, 1, 0, 0).atZone(ZoneId.of("Asia/Seoul"))
-        val epochMillis = defaultEpoch.toInstant().toEpochMilli()
+        val defaultEpoch: Instant = gen.epochStart
+        val epochMillis = defaultEpoch.toEpochMilli()
         val nowMillis = System.currentTimeMillis()
         val maxExpectedPortion = nowMillis - epochMillis
         assertTrue(timestampPortion <= maxExpectedPortion, "Timestamp portion should not be in the future")
