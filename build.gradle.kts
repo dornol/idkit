@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.9.25"
+    kotlin("jvm") version "2.3.10"
     id("java")
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
@@ -9,7 +9,7 @@ plugins {
 }
 
 group = "io.github.dornol"
-version = "1.2.0"
+version = "1.2.1"
 
 repositories {
     mavenCentral()
@@ -37,8 +37,8 @@ java {
 }
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions {
-        jvmTarget = "11"
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
 }
 

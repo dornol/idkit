@@ -11,7 +11,7 @@ Kotlin/JVM용 간단하고 빠른 ID 생성기 컬렉션.
 - 언어/런타임: Kotlin on JVM (JDK 11)
 - Kotlin: 1.9.25, Gradle Kotlin DSL
 - 테스트: JUnit 5
-- 그룹/아티팩트/버전: `io.github.dornol:idkit:1.1.0`
+- 그룹/아티팩트/버전: `io.github.dornol:idkit:1.2.1`
 
 ## 설치
 Maven Central에 게시된 아티팩트를 사용하세요.
@@ -19,14 +19,14 @@ Maven Central에 게시된 아티팩트를 사용하세요.
 Gradle(Kotlin DSL):
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:1.1.0")
+    implementation("io.github.dornol:idkit:1.2.1")
 }
 ```
 
 Gradle(Groovy):
 ```groovy
 dependencies {
-    implementation 'io.github.dornol:idkit:1.1.0'
+    implementation 'io.github.dornol:idkit:1.2.1'
 }
 ```
 
@@ -35,7 +35,7 @@ Maven:
 <dependency>
   <groupId>io.github.dornol</groupId>
   <artifactId>idkit</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.1</version>
 </dependency>
 ```
 

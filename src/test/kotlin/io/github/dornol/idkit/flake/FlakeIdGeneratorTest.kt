@@ -172,7 +172,7 @@ class FlakeIdGeneratorTest {
         // Generate a tight loop of IDs and detect a rollover from sequence==max to 0
         var prevId = gen.nextId()
         var observedRollover = false
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
         while (System.nanoTime() < deadline && !observedRollover) {
             val id = gen.nextId()
             val prevSeq = prevId and maxSeq

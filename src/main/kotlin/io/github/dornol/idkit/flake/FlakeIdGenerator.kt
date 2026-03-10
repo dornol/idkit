@@ -3,7 +3,6 @@ package io.github.dornol.idkit.flake
 import io.github.dornol.idkit.IdGenerator
 import org.slf4j.LoggerFactory
 import java.time.Instant
-import kotlin.properties.Delegates
 
 /**
  * Custom Flake/Snowflake ID Generator
@@ -28,31 +27,36 @@ open class FlakeIdGenerator(
 ) : IdGenerator<Long> {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    /** 첫 번째 비트(부호 bit)는 사용하지 않음 */
-    val unuseBits = 1
+    companion object {
+        /** 첫 번째 비트(부호 bit)는 사용하지 않음 */
+        private const val UNUSE_BITS = 1
+    }
 
     /** worker/datacenter 최대 값 */
     val maxWorkerId = (1L shl workerIdBits) - 1
     val maxDatacenterId = (1L shl datacenterIdBits) - 1
 
-    /** sequence bit 및 관련 값들 (init 블록에서 계산됨) */
-    var sequenceBits: Int by Delegates.notNull()
-    var maxSequence: Long by Delegates.notNull()
+    /** sequence bit 및 관련 값들 */
+    val sequenceBits: Int
+    val maxSequence: Long
 
     /** 비트 shift 값들 */
-    private var timestampLeftShift: Int by Delegates.notNull()
-    private var datacenterIdLeftShift: Int by Delegates.notNull()
-    private var workerIdLeftShift: Int by Delegates.notNull()
+    private val timestampLeftShift: Int
+    private val datacenterIdLeftShift: Int
+    private val workerIdLeftShift: Int
+
+    /** timestamp 최대 델타값 */
+    private val maxTimestampDelta: Long
 
     init {
         // 비트 총합 제한
-        require(unuseBits + timestampBits + datacenterIdBits + workerIdBits <= 63) {
-            "Total bits cannot exceed 64"
+        require(UNUSE_BITS + timestampBits + datacenterIdBits + workerIdBits <= 63) {
+            "Total bits (timestampBits=$timestampBits + datacenterIdBits=$datacenterIdBits + workerIdBits=$workerIdBits + unuseBits=$UNUSE_BITS = ${UNUSE_BITS + timestampBits + datacenterIdBits + workerIdBits}) cannot exceed 63"
         }
 
         require(timestampDivisor > 0) { "timestampDivisor must be greater than 0" }
-        require(datacenterIdBits > 0 && datacenterIdBits <= 5)
-        require(workerIdBits > 0)
+        require(datacenterIdBits in 1..5) { "datacenterIdBits must be between 1 and 5, but was $datacenterIdBits" }
+        require(workerIdBits > 0) { "workerIdBits must be greater than 0, but was $workerIdBits" }
 
         require(workerId in 0..maxWorkerId) {
             "workerId must be between 0 and $maxWorkerId"
@@ -62,13 +66,16 @@ open class FlakeIdGenerator(
         }
 
         // sequence bit 수 계산
-        sequenceBits = 64 - unuseBits - timestampBits - datacenterIdBits - workerIdBits
+        sequenceBits = 64 - UNUSE_BITS - timestampBits - datacenterIdBits - workerIdBits
         maxSequence = (1L shl sequenceBits) - 1
 
         // bit shift 계산
         timestampLeftShift = datacenterIdBits + workerIdBits + sequenceBits
         datacenterIdLeftShift = workerIdBits + sequenceBits
         workerIdLeftShift = sequenceBits
+
+        // timestamp 오버플로우 검증용 최대값
+        maxTimestampDelta = (1L shl timestampBits) - 1
 
         if (log.isDebugEnabled) {
             log.debug(
@@ -117,7 +124,12 @@ open class FlakeIdGenerator(
 
         lastGeneratedTimestamp = timestamp
 
-        return ((timestamp - epochStartValue) shl timestampLeftShift) or
+        val timestampDelta = timestamp - epochStartValue
+        check(timestampDelta in 0..maxTimestampDelta) {
+            "Timestamp overflow: delta $timestampDelta exceeds $timestampBits-bit maximum ($maxTimestampDelta)"
+        }
+
+        return (timestampDelta shl timestampLeftShift) or
                 (datacenterId shl datacenterIdLeftShift) or
                 (workerId shl workerIdLeftShift) or
                 sequenceCounter

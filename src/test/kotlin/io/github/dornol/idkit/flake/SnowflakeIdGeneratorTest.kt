@@ -85,6 +85,32 @@ class SnowflakeIdGeneratorTest {
     }
 
     @Test
+    fun `custom epoch adjusts timestamp portion correctly`() {
+        val customEpoch = Instant.ofEpochMilli(System.currentTimeMillis() - 10_000) // 10 seconds ago
+        val gen = SnowflakeIdGenerator(workerId = 1, dataCenterId = 1, epochStart = customEpoch)
+
+        val id = gen.nextId()
+
+        val timestampPortion = id shr timestampLeftShift
+        val expectedApprox = System.currentTimeMillis() - customEpoch.toEpochMilli()
+
+        // timestamp portion should be approximately the elapsed time since custom epoch
+        assertTrue(timestampPortion >= 0, "Timestamp portion must be non-negative")
+        assertTrue(timestampPortion <= expectedApprox + 1000, "Timestamp portion should not exceed expected range")
+        assertTrue(timestampPortion >= expectedApprox - 1000, "Timestamp portion should be close to expected value")
+
+        // Compare with default epoch - custom epoch should produce much smaller timestamp
+        val defaultGen = SnowflakeIdGenerator(workerId = 1, dataCenterId = 1)
+        val defaultId = defaultGen.nextId()
+        val defaultTimestampPortion = defaultId shr timestampLeftShift
+
+        assertTrue(
+            timestampPortion < defaultTimestampPortion,
+            "Custom epoch timestamp ($timestampPortion) should be much smaller than default epoch timestamp ($defaultTimestampPortion)"
+        )
+    }
+
+    @Test
     fun `concurrent generation produces unique ids`() {
         val threads = 8
         val perThread = 5000
