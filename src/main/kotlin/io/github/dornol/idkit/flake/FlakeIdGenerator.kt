@@ -29,7 +29,7 @@ open class FlakeIdGenerator(
 
     companion object {
         /** 첫 번째 비트(부호 bit)는 사용하지 않음 */
-        private const val UNUSE_BITS = 1
+        private const val UNUSED_BITS = 1
     }
 
     /** worker/datacenter 최대 값 */
@@ -50,12 +50,12 @@ open class FlakeIdGenerator(
 
     init {
         // 비트 총합 제한
-        require(UNUSE_BITS + timestampBits + datacenterIdBits + workerIdBits <= 63) {
-            "Total bits (timestampBits=$timestampBits + datacenterIdBits=$datacenterIdBits + workerIdBits=$workerIdBits + unuseBits=$UNUSE_BITS = ${UNUSE_BITS + timestampBits + datacenterIdBits + workerIdBits}) cannot exceed 63"
+        require(UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits <= 63) {
+            "Total bits (timestampBits=$timestampBits + datacenterIdBits=$datacenterIdBits + workerIdBits=$workerIdBits + unusedBits=$UNUSED_BITS = ${UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits}) cannot exceed 63"
         }
 
         require(timestampDivisor > 0) { "timestampDivisor must be greater than 0" }
-        require(datacenterIdBits in 1..5) { "datacenterIdBits must be between 1 and 5, but was $datacenterIdBits" }
+        require(datacenterIdBits in 1..5) { "datacenterIdBits must be between 1 and 5 (max 32 datacenters), but was $datacenterIdBits" }
         require(workerIdBits > 0) { "workerIdBits must be greater than 0, but was $workerIdBits" }
 
         require(workerId in 0..maxWorkerId) {
@@ -66,7 +66,7 @@ open class FlakeIdGenerator(
         }
 
         // sequence bit 수 계산
-        sequenceBits = 64 - UNUSE_BITS - timestampBits - datacenterIdBits - workerIdBits
+        sequenceBits = 64 - UNUSED_BITS - timestampBits - datacenterIdBits - workerIdBits
         maxSequence = (1L shl sequenceBits) - 1
 
         // bit shift 계산
