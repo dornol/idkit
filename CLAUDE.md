@@ -30,6 +30,15 @@ On Windows, use `./gradlew.bat` instead of `./gradlew`.
 
 All generators implement the common `IdGenerator<T>` interface (`src/main/kotlin/.../idkit/IdGenerator.kt`) with a single `fun nextId(): T` method.
 
+### Parsers
+
+Each time-ordered generator has a matching parser:
+- `FlakeIdParser` — decomposes a `Long` id into `FlakeComponents(timestamp, datacenterId, workerId, sequence)`. Has `FlakeIdParser.of(generator)` for mirroring a live generator's layout.
+- `UlidParser` (object) — `timestampOf`, `toBytes`, `fromBytes`, `isValid`. ULID encode/decode helpers live in `UlidCodec.kt` as package-internal top-level functions so the generator and parser share a single implementation.
+- `UuidV7Parser` (object) — `timestampOf` (strict v7 check) and `rawTimestampOf` (no version check).
+
+NanoID deliberately has no parser: it is pure random and carries no recoverable metadata.
+
 ### Generator Hierarchy
 
 - `FlakeIdGenerator` (open class) — configurable bit layout (timestamp/datacenter/worker/sequence bits), custom epoch, and adjustable timestamp resolution via `timestampDivisor`. Thread safety via `@Synchronized`.

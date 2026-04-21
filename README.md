@@ -195,6 +195,55 @@ Monotonicity (since 2.0.0):
 - When the counter overflows within the same millisecond, the timestamp is borrowed 1 ms forward and the counter resets to 0. Once the real clock catches up, the stored timestamp realigns naturally.
 - As a result, UUIDs produced by the same generator are **strictly increasing** when compared by `mostSignificantBits` — friendly to database index locality.
 
+## Parsers
+
+Each time-ordered generator has a matching parser that recovers the embedded metadata — useful for log correlation, incident triage, and debugging.
+
+### Flake / Snowflake
+
+```kotlin
+import io.github.dornol.idkit.flake.FlakeIdParser
+import io.github.dornol.idkit.flake.SnowflakeIdGenerator
+
+val gen = SnowflakeIdGenerator(workerId = 7, datacenterId = 13)
+val id = gen.nextId()
+
+// Convenience: mirror an existing generator's layout
+val parser = FlakeIdParser.of(gen)
+val parts = parser.decompose(id)
+// FlakeComponents(timestamp=Instant, datacenterId=13, workerId=7, sequence=…)
+
+parser.timestampOf(id)   // Instant
+parser.workerOf(id)      // 7
+parser.datacenterOf(id)  // 13
+parser.sequenceOf(id)    // sequence counter within the slice
+```
+
+For cross-service parsing — where the generator lives elsewhere — construct the parser with the same layout instead of calling `.of(...)`.
+
+### ULID
+
+```kotlin
+import io.github.dornol.idkit.ulid.UlidParser
+
+val ulid = "01HV8B2YJ4M2N3X4Y5Z6ABCDEF"
+UlidParser.timestampOf(ulid)    // Instant
+UlidParser.toBytes(ulid)        // 16-byte big-endian binary form
+UlidParser.fromBytes(bytes16)   // re-encode binary back to the 26-char string
+UlidParser.isValid(ulid)        // cheap pre-check; never throws
+```
+
+### UUID v7
+
+```kotlin
+import io.github.dornol.idkit.uuidv7.UuidV7Parser
+
+UuidV7Parser.timestampOf(uuid)     // Instant — throws if the UUID is not a v7
+UuidV7Parser.rawTimestampOf(uuid)  // Long — no version check, takes the top 48 bits as-is
+```
+
+NanoID deliberately has no parser: it is not time-ordered and carries no recoverable metadata.
+
 ## Common interface
 
 All generators implement `IdGenerator<T>`.

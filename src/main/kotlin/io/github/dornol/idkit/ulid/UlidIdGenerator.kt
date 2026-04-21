@@ -4,13 +4,6 @@ import io.github.dornol.idkit.IdGenerator
 import java.util.concurrent.ThreadLocalRandom
 
 /**
- * Crockford's Base32 alphabet — excludes `I`, `L`, `O`, `U` to avoid visual ambiguity.
- * `internal` so the test suite can assert against the single source of truth without
- * duplicating the 32-char literal.
- */
-internal const val CROCKFORD_BASE32_ALPHABET: String = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-
-/**
  * ULID (Universally Unique Lexicographically Sortable Identifier) generator.
  *
  * Emits 26-character strings encoded in Crockford's Base32:
@@ -73,7 +66,7 @@ open class UlidIdGenerator : IdGenerator<String> {
             randomLo = newLo
         }
 
-        return encode(lastTimestamp, randomHi, randomLo)
+        return encodeUlid(lastTimestamp, randomHi, randomLo)
     }
 
     /**
@@ -100,49 +93,6 @@ open class UlidIdGenerator : IdGenerator<String> {
     }
 
     private companion object {
-        private const val MASK_5_BITS = 0x1FL
         private const val RANDOM_HI_MASK = 0xFFFFL // 16 bits
-
-        /**
-         * Encodes `(timestamp, randomHi, randomLo)` into a 26-char Crockford Base32 string.
-         *
-         * Bit layout (80-bit randomness emitted from LSB toward MSB):
-         *  - chars 25..14 (12 chars) draw from the low 60 bits of [randomLo]
-         *  - char 13 straddles: 4 bits from [randomLo] (bits 60..63) + 1 bit from [randomHi] (bit 0)
-         *  - chars 12..10 (3 chars) draw from the remaining 15 bits of [randomHi] (bits 1..15)
-         */
-        private fun encode(timestamp: Long, randomHi: Long, randomLo: Long): String {
-            val chars = CharArray(26)
-
-            // chars 0..9: 48-bit timestamp.
-            var ts = timestamp
-            for (i in 9 downTo 0) {
-                chars[i] = CROCKFORD_BASE32_ALPHABET[(ts and MASK_5_BITS).toInt()]
-                ts = ts ushr 5
-            }
-
-            // chars 25..14: 12 chars from randomLo's low 60 bits. After the loop, `rl` holds
-            // only the top 4 bits of the original randomLo (bits 60..63).
-            var rl = randomLo
-            for (i in 25 downTo 14) {
-                chars[i] = CROCKFORD_BASE32_ALPHABET[(rl and MASK_5_BITS).toInt()]
-                rl = rl ushr 5
-            }
-
-            // char 13: the remaining 4 bits of randomLo + 1 low bit of randomHi. The `rl and
-            // 0xFL` mask is defensive — `rl` should already fit in 4 bits after the loop above.
-            var rh = randomHi
-            val char13 = ((rh and 0x1L) shl 4) or (rl and 0xFL)
-            chars[13] = CROCKFORD_BASE32_ALPHABET[char13.toInt()]
-            rh = rh ushr 1
-
-            // chars 12..10: 3 chars from randomHi's remaining 15 bits.
-            for (i in 12 downTo 10) {
-                chars[i] = CROCKFORD_BASE32_ALPHABET[(rh and MASK_5_BITS).toInt()]
-                rh = rh ushr 5
-            }
-
-            return String(chars)
-        }
     }
 }

@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `UlidIdGenerator` — produces 26-character [ULIDs](https://github.com/ulid/spec) encoded in Crockford's Base32 (48-bit timestamp + 80-bit randomness). Monotonic within a millisecond via the spec's randomness-increment profile, handles clock regression by holding the last observed timestamp, throws `IllegalStateException` on the practically unreachable 80-bit overflow. Thread-safe via `@Synchronized`; exposes `currentEpochMillis()` as a `protected open` test seam.
 - `NanoIdGenerator` — compact, URL-safe, random string ids (21 chars / 64-char URL-safe alphabet by default, both configurable). Unlike the other generators, NanoID is **not time-ordered**; it fills the "opaque public identifier" slot (short URLs, session tokens, invite codes). Backed by `java.security.SecureRandom`, collision profile matches UUID v4.
+- `FlakeIdParser` — decomposes a Flake/Snowflake `Long` id into `FlakeComponents(timestamp, datacenterId, workerId, sequence)`. Ships with `FlakeIdParser.of(generator)` for same-process parsing; can also be constructed standalone with just the layout when parsing ids from another service.
+- `UlidParser` — parses ULID strings: `timestampOf(String)`, `toBytes(String)` (16-byte big-endian), `fromBytes(ByteArray)`, `isValid(String)`.
+- `UuidV7Parser` — parses UUID v7 values: `timestampOf(UUID)` (strict v7 check) and `rawTimestampOf(UUID)` (no version check).
+
+### Changed
+
+- `UlidIdGenerator`: extracted the Base32 encode/decode helpers into package-internal top-level functions (`UlidCodec.kt`). The generator delegates to `encodeUlid(...)`, and the new parser shares the same code path — one source of truth for ULID encoding.
 
 ## [2.0.1] - 2026-04-21
 
