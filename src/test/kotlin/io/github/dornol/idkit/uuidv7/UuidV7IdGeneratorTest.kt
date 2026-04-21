@@ -31,7 +31,7 @@ class UuidV7IdGeneratorTest {
         val uuid1 = generator.nextId()
         Thread.sleep(3)
         val uuid2 = generator.nextId()
-        // timestamp 부분(상위 48비트)을 추출하여 비교
+        // Extract the timestamp portion (high 48 bits) and compare
         val ts1 = uuid1.mostSignificantBits ushr 16
         val ts2 = uuid2.mostSignificantBits ushr 16
         assertTrue(ts2 >= ts1, "UUID2 timestamp should be >= UUID1 timestamp: ts1=$ts1, ts2=$ts2")
@@ -50,21 +50,21 @@ class UuidV7IdGeneratorTest {
         val uuid = generator.nextId()
         val msb = uuid.mostSignificantBits
 
-        // version 비트(48..51)는 0b0111 = 7
+        // Version bits (48..51) are 0b0111 = 7
         val version = ((msb shr 12) and 0xFL).toInt()
         assertEquals(7, version, "Version bits should be 7")
 
-        // timestamp는 상위 48비트에 위치
+        // timestamp lives in the high 48 bits
         val timestamp = msb ushr 16
         val now = System.currentTimeMillis()
-        // timestamp가 현재 시간 근처(±5초)인지 확인
+        // timestamp should be near the current time (±5s)
         assertTrue(timestamp in (now - 5000)..now, "Timestamp should be close to current time")
 
-        // rand_a는 12비트(비트 52..63)
+        // rand_a is 12 bits (52..63)
         val randA = msb and 0xFFFL
         assertTrue(randA in 0 until (1L shl 12), "rand_a should be within 12-bit range")
 
-        // leastSignificantBits의 variant 확인
+        // Verify variant bits inside leastSignificantBits
         val lsb = uuid.leastSignificantBits
         val variantBits = (lsb ushr 62) and 0x3L
         assertEquals(2L, variantBits, "Variant bits (top 2 bits of lsb) should be 0b10")

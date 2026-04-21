@@ -19,7 +19,7 @@ On Windows, use `./gradlew.bat` instead of `./gradlew`.
 
 ## Tech Stack
 
-- **Language:** Kotlin 1.9.25, targeting JVM 11
+- **Language:** Kotlin 2.3.10, targeting JVM 11
 - **Build:** Gradle with Kotlin DSL
 - **Testing:** JUnit 5
 - **Logging:** SLF4J API
@@ -38,8 +38,9 @@ All generators implement the common `IdGenerator<T>` interface (`src/main/kotlin
 
 ### Key Design Decisions
 
-- Clock regression handling: Flake/Snowflake pin to last timestamp; UUID v7 uses CAS to ensure monotonicity.
-- Sequence overflow in Flake/Snowflake triggers busy-spin wait (`Thread.onSpinWait()`) until the next time slice.
+- Clock regression handling: Flake/Snowflake throw `ClockMovedBackwardsException`; UUID v7 holds the previously observed timestamp and increments its internal counter to preserve monotonicity.
+- Sequence overflow in Flake/Snowflake triggers a bounded busy-spin (`Thread.onSpinWait()`) until the next time slice.
+- UUID v7 uses RFC 9562 §6.2 Method 2: the 12-bit `rand_a` field is a monotonic counter packed with the timestamp into a single `AtomicLong`, updated via CAS.
 
 ## CI/CD
 
@@ -47,6 +48,6 @@ GitHub Actions workflow (`.github/workflows/maven-publish.yml`) triggers on vers
 
 ## Code Conventions
 
-- Source language is Kotlin; comments and documentation are in Korean.
+- Source language is Kotlin; comments and documentation are in English.
 - Test method names use Kotlin backtick syntax with descriptive English phrases (e.g., `` `ids are strictly increasing and positive` ``).
 - Package structure: `io.github.dornol.idkit` with sub-packages `flake` and `uuidv7`.

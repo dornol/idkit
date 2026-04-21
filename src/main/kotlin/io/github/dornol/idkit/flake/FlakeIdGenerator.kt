@@ -7,33 +7,37 @@ import java.time.Instant
 /**
  * Custom Flake/Snowflake ID Generator
  *
- * ID 구조 (총 64bit)
+ * ID layout (64 bits total):
  *  - 1 bit  : sign bit (unused)
- *  - X bits : timestamp delta (epoch 로부터의 경과, divisor 단위)
+ *  - X bits : timestamp delta (elapsed since [epochStart], in `timestampDivisor` units)
  *  - Y bits : datacenterId
  *  - Z bits : workerId
- *  - R bits : sequence (동일 timestamp 슬라이스 내 증가 카운터)
+ *  - R bits : sequence (counter within the same timestamp slice)
  *
- * [timestampDivisor] 로 ms 보다 큰 단위로 timestamp 해상도를 낮출 수 있다.
+ * Use [timestampDivisor] to coarsen the timestamp resolution beyond a single millisecond.
  *
- * ### 동작 특성
- *  - **스레드 안전**: [nextId] 는 `@Synchronized` 로 직렬화된다.
- *  - **시퀀스 오버플로우**: 동일 timestamp 내 sequence 소진 시 다음 시간 슬라이스까지
- *    [Thread.onSpinWait] 로 busy-wait 한다 (최대 한 슬라이스 단위로 제한).
- *  - **시계 역행**: [System.currentTimeMillis] 가 이전에 관측된 값보다 작으면
- *    [ClockMovedBackwardsException] 을 던진다. 과거의 "pin to last" 전략은 sequence 오버플로우와
- *    결합 시 실제 시계가 따라잡을 때까지 수분/수시간 busy-spin 할 위험이 있어 명시적 실패가 안전하다.
- *  - **타임스탬프 소진**: [timestampBits] 로 표현 가능한 범위를 초과하면 [IllegalStateException]
- *    이 발생한다. 시계는 앞으로만 흐르므로 이 상태는 **복구 불가능**하며, 호출자는 더 넓은
- *    [timestampBits] 또는 더 최근의 [epochStart] 로 재구성해야 한다.
- *  - **delta 계산 정밀도**: timestamp 필드는 `(now - epoch) / divisor` 로 계산된다.
- *    이전 버전은 `now/divisor - epoch/divisor` 방식이라 `divisor > 1` 이면서 `epoch` 가
- *    divisor 의 배수가 아닐 때 ±1 오차가 났는데, 이 버전에서 정밀 계산으로 교정되었다.
+ * ### Behavior
+ *  - **Thread safety**: [nextId] is serialized via `@Synchronized`.
+ *  - **Sequence overflow**: when the sequence field is exhausted within one timestamp slice,
+ *    the generator busy-waits with [Thread.onSpinWait] until the next slice (bounded to at most
+ *    one slice).
+ *  - **Clock regression**: when [System.currentTimeMillis] returns a value less than the last
+ *    observed timestamp, [ClockMovedBackwardsException] is thrown. The legacy "pin to last"
+ *    strategy, combined with a sequence overflow, could busy-spin for minutes or hours waiting
+ *    for the wall clock to catch up — failing fast is safer.
+ *  - **Timestamp exhaustion**: exceeding the range representable in [timestampBits] raises
+ *    [IllegalStateException]. Because wall-clock time only moves forward, this state is
+ *    **non-recoverable**; the caller must reconstruct the generator with a wider [timestampBits]
+ *    or a more recent [epochStart].
+ *  - **Precise delta math**: the timestamp field is computed as `(now - epoch) / divisor`.
+ *    The previous implementation computed `now/divisor - epoch/divisor`, which was off by ±1
+ *    when `divisor > 1` and `epoch` was not a multiple of the divisor. This version uses the
+ *    precise form.
  *
- * 상속 관련 주의: 클래스는 `open` 이지만 [nextId] 는 `@Synchronized` 가 적용된 `final override`
- * 이므로 서브클래스에서 재정의할 수 없다. 서브클래스는 [SnowflakeIdGenerator] 처럼
- * 기본 비트 레이아웃을 미리 바인딩하는 얇은 래퍼 용도로만 사용하도록 설계되었다.
- * 테스트에서 가짜 시계가 필요하면 [currentEpochMillis] 를 override 하라.
+ * Inheritance note: the class is `open`, but [nextId] is a `final override` with `@Synchronized`
+ * and cannot be re-overridden. Subclasses are intended to be thin wrappers like
+ * [SnowflakeIdGenerator] that pre-bind a default bit layout. Tests that need a fake clock
+ * should override [currentEpochMillis] instead.
  */
 open class FlakeIdGenerator(
     val timestampBits: Int = 41,
@@ -47,33 +51,33 @@ open class FlakeIdGenerator(
     private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
-        /** 첫 번째 비트(부호 bit)는 사용하지 않음 */
+        /** The most significant bit (sign bit) is reserved and unused. */
         private const val UNUSED_BITS = 1
     }
 
-    /** worker/datacenter 최대 값 */
+    /** Maximum representable worker / datacenter id. */
     val maxWorkerId: Int = (1 shl workerIdBits) - 1
     val maxDatacenterId: Int = (1 shl datacenterIdBits) - 1
 
-    /** epoch 기준 ms 값 (delta 계산 시 raw millis 로 사용). */
+    /** Raw epoch millis for precise delta math. */
     private val epochStartMillis: Long = epochStart.toEpochMilli()
 
-    /** sequence bit 및 관련 값들 (init 에서 계산) */
+    /** Sequence-related values (computed in init). */
     val sequenceBits: Int
     val maxSequence: Long
 
-    /** 비트 shift 값들 */
+    /** Left-shift amounts for bit packing. */
     private val timestampLeftShift: Int
     private val datacenterIdLeftShift: Int
     private val workerIdLeftShift: Int
 
-    /** timestamp 필드의 최대 표현 값 */
+    /** Maximum value representable in the timestamp field. */
     private val maxTimestamp: Long
 
-    /** 동일 timestamp 슬라이스 내 sequence 증가 카운터 */
+    /** Sequence counter within the current timestamp slice. */
     private var sequenceCounter = 0L
 
-    /** 마지막으로 생성된 timestamp 슬라이스 (epoch 로부터 divisor 단위) */
+    /** Last emitted timestamp slice (delta from epoch in divisor units). */
     private var lastGeneratedTimestamp = -1L
 
     init {
@@ -119,18 +123,21 @@ open class FlakeIdGenerator(
     }
 
     /**
-     * ID 생성 (동기화).
+     * Generates the next id (synchronized).
      *
-     *  - timestamp 슬라이스가 이전과 같으면 sequence 를 증가시킨다.
-     *  - sequence 가 overflow 되면 다음 시간 슬라이스까지 대기한다.
-     *  - 시계 역행 감지 시 [ClockMovedBackwardsException] 을 던진다.
+     *  - Increments the sequence when the timestamp slice equals the previous one.
+     *  - Waits for the next time slice when the sequence would overflow.
+     *  - Throws [ClockMovedBackwardsException] if clock regression is observed.
      *
-     * 모든 검증은 내부 상태를 변경하기 **전에** 수행하므로 예외 발생 시 generator 인스턴스는
-     * 오염 없이 재호출 가능하다. 단 [IllegalStateException] (timestamp 비트 초과) 은 시계가
-     * 앞으로만 흐르기 때문에 실질적으로 복구 불가능하다.
+     * All validation runs **before** any internal state is mutated, so a thrown exception leaves
+     * the generator instance uncorrupted and re-callable. The only exception is
+     * [IllegalStateException] on timestamp overflow: because wall-clock time only moves forward,
+     * that state is effectively non-recoverable on the same instance.
      *
-     * @throws ClockMovedBackwardsException 시스템 시계가 이전 관측값보다 작은 값을 반환했을 때.
-     * @throws IllegalStateException timestamp 델타가 [timestampBits] 로 표현 가능한 최대값을 초과했을 때.
+     * @throws ClockMovedBackwardsException if the system clock returned a value smaller than the
+     *   previously observed timestamp.
+     * @throws IllegalStateException if the timestamp delta would exceed the maximum value
+     *   representable in [timestampBits].
      */
     @Synchronized
     final override fun nextId(): Long {
@@ -146,7 +153,7 @@ open class FlakeIdGenerator(
         val nextSequence: Long = if (timestamp == lastGeneratedTimestamp) {
             val candidate = (sequenceCounter + 1) and maxSequence
             if (candidate == 0L) {
-                // sequence overflow → 다음 슬라이스까지 대기 후 해당 슬라이스의 첫 id 로 시작
+                // Sequence overflow — wait for the next slice and start from its first id.
                 timestamp = waitForNextSlice(timestamp)
                 0L
             } else {
@@ -160,7 +167,7 @@ open class FlakeIdGenerator(
             "Timestamp overflow: delta $timestamp exceeds $timestampBits-bit maximum ($maxTimestamp)"
         }
 
-        // 모든 검증 통과 → 내부 상태 커밋
+        // All validation passed — commit internal state.
         lastGeneratedTimestamp = timestamp
         sequenceCounter = nextSequence
 
@@ -171,20 +178,20 @@ open class FlakeIdGenerator(
     }
 
     /**
-     * 현재 wall-clock epoch 밀리초를 반환한다.
+     * Returns the current wall-clock epoch milliseconds.
      *
-     * 테스트에서 가짜 시계를 주입할 수 있도록 `protected open` 으로 노출된다.
-     * 프로덕션 코드에서는 override 하지 말 것.
+     * Exposed as `protected open` so tests can inject a fake clock. Do not override in
+     * production code.
      *
      * @since 2.0.0
      */
     protected open fun currentEpochMillis(): Long = System.currentTimeMillis()
 
-    /** wall-clock millis 를 epoch 기준 divisor-단위 슬라이스로 변환 (정밀). */
+    /** Converts wall-clock millis into an epoch-relative slice in divisor units (precise). */
     private fun computeSlice(nowMillis: Long): Long =
         (nowMillis - epochStartMillis) / timestampDivisor
 
-    /** `currentSlice` 보다 큰 다음 슬라이스가 될 때까지 busy-spin 한 뒤 새 슬라이스를 반환. */
+    /** Busy-spins until the slice strictly exceeds `currentSlice`, then returns the new slice. */
     private fun waitForNextSlice(currentSlice: Long): Long {
         var slice = computeSlice(currentEpochMillis())
         while (slice <= currentSlice) {
