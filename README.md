@@ -7,6 +7,7 @@ Provided generators:
 - **Flake** (`Long`, 64 bits) — Snowflake-derived generator with a customizable bit layout, epoch, and timestamp resolution.
 - **UUID v7** (`java.util.UUID`) — RFC 9562 §6.2 Method 2 implementation with intra-millisecond monotonicity.
 - **ULID** (`String`, 26 chars) — Crockford Base32 encoded, lexicographically sortable, monotonic within a millisecond.
+- **NanoID** (`String`, 21 chars by default) — compact, URL-safe, cryptographically random. Not time-ordered — fills the "opaque public id" slot.
 
 ## Project info
 
@@ -145,7 +146,35 @@ Guarantees:
 - **Overflow**: exhausting the 80-bit randomness within a single ms (~1.2 × 10²⁴ ids) throws `IllegalStateException`. Practically unreachable.
 - Thread-safe via `@Synchronized`.
 
-### 4) UUID v7 (`java.util.UUID`)
+### 4) NanoID (`String`)
+
+Generates compact, URL-safe, **random** (non-time-ordered) strings. Good for public identifiers — short URLs, session tokens, invite codes — where the id should leak no timing information and should be hard to guess.
+
+```kotlin
+import io.github.dornol.idkit.nanoid.NanoIdGenerator
+
+fun main() {
+    val gen = NanoIdGenerator()               // 21-char URL-safe id
+    val id: String = gen.nextId()             // e.g. "V1StGXR8_Z5jdHi6B-myT"
+    println(id)
+
+    // Custom size / alphabet
+    val short = NanoIdGenerator(size = 10)
+    val digits = NanoIdGenerator(size = 6, alphabet = "0123456789")
+}
+```
+
+Defaults:
+- Size: 21 chars
+- Alphabet: 64 URL-safe chars (`A-Z`, `a-z`, `0-9`, `_`, `-`)
+- Collision profile: ~2¹²² possible ids (≈ UUID v4 level)
+- Random source: `java.security.SecureRandom` (thread-safe)
+
+Notes:
+- **Not time-ordered.** If you need lexicographic order by time, use ULID or UUID v7 instead.
+- Duplicate characters in a custom `alphabet` bias the output; pass a deduplicated string.
+
+### 5) UUID v7 (`java.util.UUID`)
 
 Generates RFC 9562 UUID v7 values with `version = 7` and `variant = 0b10`.
 
@@ -179,8 +208,9 @@ interface IdGenerator<T> {
 ## Behavior and caveats
 
 ### Thread safety
-- **Snowflake / Flake**: `nextId()` is `@Synchronized`.
+- **Snowflake / Flake / ULID**: `nextId()` is `@Synchronized`.
 - **UUID v7**: uses an internal `AtomicLong` with CAS.
+- **NanoID**: relies on a thread-safe `SecureRandom` (serialized per JDK contract).
 
 ### Clock regression (`System.currentTimeMillis()` returns a value smaller than the last observation)
 - **Snowflake / Flake**: throw `ClockMovedBackwardsException` (extends `IllegalStateException`). The internal state is not mutated before the throw, so the same instance is usable once the clock recovers.
@@ -210,6 +240,7 @@ JUnit 5 test files:
 - `src/test/kotlin/io/github/dornol/idkit/flake/FlakeIdGeneratorTest.kt`
 - `src/test/kotlin/io/github/dornol/idkit/uuidv7/UuidV7IdGeneratorTest.kt`
 - `src/test/kotlin/io/github/dornol/idkit/ulid/UlidIdGeneratorTest.kt`
+- `src/test/kotlin/io/github/dornol/idkit/nanoid/NanoIdGeneratorTest.kt`
 
 Run:
 ```bash
@@ -224,6 +255,7 @@ Run:
 - Snowflake has a per-ms sequence ceiling of 4096.
 - UUID v7 has a per-ms counter ceiling of 4096 and borrows from the clock when exceeded; sustained overload will push the embedded timestamp ahead of the wall clock.
 - ULID has a per-ms randomness budget of 2⁸⁰ (≈ 1.2 × 10²⁴), which is unreachable in practice.
+- NanoID generation cost is dominated by `SecureRandom.nextInt()`; for very high-volume workloads, profile before concluding it is a bottleneck.
 
 ## Logging
 

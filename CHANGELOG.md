@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `UlidIdGenerator` — produces 26-character [ULIDs](https://github.com/ulid/spec) encoded in Crockford's Base32 (48-bit timestamp + 80-bit randomness). Monotonic within a millisecond via the spec's randomness-increment profile, handles clock regression by holding the last observed timestamp, throws `IllegalStateException` on the practically unreachable 80-bit overflow. Thread-safe via `@Synchronized`; exposes `currentEpochMillis()` as a `protected open` test seam.
+- `NanoIdGenerator` — compact, URL-safe, random string ids (21 chars / 64-char URL-safe alphabet by default, both configurable). Unlike the other generators, NanoID is **not time-ordered**; it fills the "opaque public identifier" slot (short URLs, session tokens, invite codes). Backed by `java.security.SecureRandom`, collision profile matches UUID v4.
 
 ## [2.0.1] - 2026-04-21
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**idkit** is a Kotlin/JVM library providing thread-safe ID generators: Snowflake (Long), Flake (configurable Long), UUID v7, and ULID. Published to Maven Central as `io.github.dornol:idkit`.
+**idkit** is a Kotlin/JVM library providing thread-safe ID generators: Snowflake (Long), Flake (configurable Long), UUID v7, ULID, and NanoID. Published to Maven Central as `io.github.dornol:idkit`.
 
 ## Build Commands
 
@@ -36,6 +36,7 @@ All generators implement the common `IdGenerator<T>` interface (`src/main/kotlin
 - `SnowflakeIdGenerator` extends `FlakeIdGenerator` — fixed Twitter Snowflake layout (41/5/5/12 bits), no additional logic.
 - `UuidV7IdGenerator` — standalone implementation producing `java.util.UUID`. Uses `AtomicLong` + CAS for monotonic timestamps; randomness via `ThreadLocalRandom`.
 - `UlidIdGenerator` (open class) — 26-char Crockford Base32 string. 48-bit timestamp + 80-bit randomness, monotonic within a ms via randomness increment. Thread safety via `@Synchronized`.
+- `NanoIdGenerator` — compact URL-safe random string (21 chars / 64-char alphabet by default). **Not time-ordered**; backed by `SecureRandom`. Fills the "opaque public identifier" slot.
 
 ### Key Design Decisions
 
@@ -52,4 +53,4 @@ GitHub Actions workflow (`.github/workflows/maven-publish.yml`) triggers on vers
 
 - Source language is Kotlin; comments and documentation are in English.
 - Test method names use Kotlin backtick syntax with descriptive English phrases (e.g., `` `ids are strictly increasing and positive` ``).
-- Package structure: `io.github.dornol.idkit` with sub-packages `flake`, `uuidv7`, and `ulid`.
+- Package structure: `io.github.dornol.idkit` with sub-packages `flake`, `uuidv7`, `ulid`, and `nanoid`.
