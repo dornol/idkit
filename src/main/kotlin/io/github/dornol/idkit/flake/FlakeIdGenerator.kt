@@ -191,13 +191,25 @@ open class FlakeIdGenerator(
     private fun computeSlice(nowMillis: Long): Long =
         (nowMillis - epochStartMillis) / timestampDivisor
 
-    /** Busy-spins until the slice strictly exceeds `currentSlice`, then returns the new slice. */
+    /**
+     * Busy-spins until the slice strictly exceeds `currentSlice`, then returns the new slice.
+     *
+     * If the wall clock is observed to regress below `currentSlice` during the spin, throws
+     * [ClockMovedBackwardsException] instead of waiting for the clock to catch back up — which
+     * could otherwise block the caller for the duration of the backward jump (potentially
+     * minutes or hours under a bad NTP correction).
+     */
     private fun waitForNextSlice(currentSlice: Long): Long {
-        var slice = computeSlice(currentEpochMillis())
-        while (slice <= currentSlice) {
+        while (true) {
+            val slice = computeSlice(currentEpochMillis())
+            if (slice > currentSlice) return slice
+            if (slice < currentSlice) {
+                throw ClockMovedBackwardsException(
+                    driftAmount = currentSlice - slice,
+                    timestampDivisor = timestampDivisor,
+                )
+            }
             Thread.onSpinWait()
-            slice = computeSlice(currentEpochMillis())
         }
-        return slice
     }
 }

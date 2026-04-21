@@ -4,10 +4,8 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
-import java.util.AbstractMap
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -119,7 +117,7 @@ class SnowflakeIdGeneratorTest {
         val pool = Executors.newFixedThreadPool(threads)
         val gate = CountDownLatch(1)
         val done = CountDownLatch(threads)
-        val set = Collections.newSetFromMap(LongHashMapBackedMutableMap(perThread * threads))
+        val set = Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>(perThread * threads))
 
         repeat(threads) {
             pool.submit {
@@ -146,23 +144,4 @@ class SnowflakeIdGeneratorTest {
         val expected = threads * perThread
         assertEquals(expected, set.size)
     }
-}
-
-/**
- * A very small, specialized mutable map for primitive long keys to boolean that we can wrap as a Set via Collections.newSetFromMap.
- * This avoids boxing overhead in hot loops during the concurrency test and keeps dependencies minimal.
- */
-private class LongHashMapBackedMutableMap(initialCapacity: Int) : AbstractMap<Long, Boolean>(), ConcurrentMap<Long, Boolean> {
-    private val inner = ConcurrentHashMap<Long, Boolean>(initialCapacity)
-
-    override val entries: MutableSet<MutableMap.MutableEntry<Long, Boolean>>
-        get() = inner.entries
-
-    override fun putIfAbsent(key: Long, value: Boolean): Boolean? = inner.putIfAbsent(key, value)
-    override fun remove(key: Long, value: Boolean): Boolean = inner.remove(key, value)
-    override fun replace(key: Long, oldValue: Boolean, newValue: Boolean): Boolean = inner.replace(key, oldValue, newValue)
-    override fun replace(key: Long, value: Boolean): Boolean? = inner.replace(key, value)
-    override fun get(key: Long): Boolean? = inner[key]
-    override fun put(key: Long, value: Boolean): Boolean? = inner.put(key, value)
-    override fun remove(key: Long): Boolean? = inner.remove(key)
 }

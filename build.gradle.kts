@@ -64,12 +64,18 @@ mavenPublishing {
         name = "idkit"
         description = "Id Generator Kit"
         url = "https://github.com/dornol/idkit/"
+        inceptionYear = "2025"
 
         licenses {
             license {
                 name = "MIT"
                 url = "https://github.com/dornol/idkit/blob/main/LICENSE"
             }
+        }
+
+        issueManagement {
+            system = "GitHub"
+            url = "https://github.com/dornol/idkit/issues"
         }
 
         developers {

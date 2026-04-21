@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 class FlakeIdGeneratorTest {
@@ -274,6 +275,37 @@ class FlakeIdGeneratorTest {
         val actualDelta = id shr timestampLeftShift
 
         assertEquals(5L, actualDelta, "Expected precise (1060-1003)/10 = 5, got $actualDelta")
+    }
+
+    @Test
+    fun `waitForNextSlice throws ClockMovedBackwardsException when clock regresses during busy-spin`() {
+        // Narrow race: nextId() passes its top-level regression check, then the sequence
+        // overflows and we enter waitForNextSlice. If the clock regresses during the spin,
+        // we must fail fast instead of waiting for the wall clock to catch up.
+        //
+        // Configure with sequenceBits = 1 (maxSequence = 1) so overflow triggers on the 3rd
+        // call. Return a stable clock for the first 3 reads (one per nextId() top), then
+        // regress on the 4th read (first iteration inside waitForNextSlice).
+        val callCount = AtomicInteger(0)
+        val gen = object : FlakeIdGenerator(
+            timestampBits = 52,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            timestampDivisor = 1L,
+            epochStart = Instant.EPOCH,
+            datacenterId = 1,
+            workerId = 1,
+        ) {
+            override fun currentEpochMillis(): Long {
+                return if (callCount.incrementAndGet() <= 3) 1_000_000L else 999_999L
+            }
+        }
+        assertEquals(1, gen.sequenceBits, "sequenceBits must be 1 to force overflow on 3rd call")
+
+        gen.nextId() // call #1: slice=1_000_000, seq=0
+        gen.nextId() // call #2: slice=1_000_000, seq=1 (maxed out)
+        val ex = assertThrows<ClockMovedBackwardsException> { gen.nextId() }
+        assertTrue(ex.driftAmount > 0, "driftAmount must be positive, was ${ex.driftAmount}")
     }
 
     @Test
