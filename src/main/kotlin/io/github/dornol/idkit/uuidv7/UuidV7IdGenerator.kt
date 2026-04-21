@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong
  *    increasing.
  *  - Collision probability is unchanged: `rand_b`'s 62 random bits are preserved.
  */
-class UuidV7IdGenerator : IdGenerator<UUID> {
+open class UuidV7IdGenerator : IdGenerator<UUID> {
 
     /**
      * Packed state `(timestamp:52bit | counter:12bit)`.
@@ -59,7 +59,7 @@ class UuidV7IdGenerator : IdGenerator<UUID> {
      * 2. Place the timestamp in bits 0..47, version 7 in 48..51, and the counter in 52..63.
      * 3. Fill `leastSigBits` with the 2-bit variant `0b10` plus 62 random bits.
      */
-    override fun nextId(): UUID {
+    final override fun nextId(): UUID {
         val packed = nextState()
         val timestamp = packed ushr COUNTER_BITS
         val counter = packed and COUNTER_MASK
@@ -81,6 +81,17 @@ class UuidV7IdGenerator : IdGenerator<UUID> {
     }
 
     /**
+     * Returns the current wall-clock epoch milliseconds.
+     *
+     * Exposed as `protected open` so tests can inject a fake clock; align with the seam on
+     * [io.github.dornol.idkit.flake.FlakeIdGenerator] and [io.github.dornol.idkit.ulid.UlidIdGenerator].
+     * Do not override in production code.
+     *
+     * @since 2.2.0
+     */
+    protected open fun currentEpochMillis(): Long = System.currentTimeMillis()
+
+    /**
      * Atomically advances the packed `(timestamp | counter)` state and returns the new value.
      *
      * On CAS contention the losing thread retries; winners advance the counter in CAS order.
@@ -90,7 +101,7 @@ class UuidV7IdGenerator : IdGenerator<UUID> {
             val prev = state.get()
             val prevTs = prev ushr COUNTER_BITS
             val prevCounter = prev and COUNTER_MASK
-            val now = System.currentTimeMillis()
+            val now = currentEpochMillis()
 
             val newTs: Long
             val newCounter: Long

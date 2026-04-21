@@ -244,6 +244,57 @@ UuidV7Parser.rawTimestampOf(uuid)  // Long — no version check, takes the top 4
 
 NanoID deliberately has no parser: it is not time-ordered and carries no recoverable metadata.
 
+## Worker ID auto-assignment
+
+Running Snowflake/Flake in a distributed deployment requires a unique `workerId` per node. Rather than hand-wiring this into each pod, derive it from runtime context:
+
+```kotlin
+import io.github.dornol.idkit.worker.WorkerIdSource
+import io.github.dornol.idkit.flake.SnowflakeIdGenerator
+
+// Kubernetes StatefulSet: hostname like "api-server-3" → ordinal 3
+val workerId = WorkerIdSource.fromPodOrdinal(bits = 5)
+    ?: WorkerIdSource.fromEnv("WORKER_ID")
+
+val gen = SnowflakeIdGenerator(
+    workerId = workerId,
+    datacenterId = WorkerIdSource.fromEnv("DC_ID", env = System.getenv()),
+)
+```
+
+Available strategies:
+- `hash(value, bits)` / `fromHostname(bits)` — stable `String.hashCode` of any identifier
+- `parseOrdinal(hostname, bits)` / `fromPodOrdinal(bits)` — Kubernetes StatefulSet ordinal
+- `fromEnv(name, env)` — explicit environment variable
+- `fromNetworkInterface(bits)` — derived from the first non-loopback MAC address
+
+The pure functions (`hash`, `parseOrdinal`, `fromEnv(..., env = ...)`) take their source as an argument, so deterministic tests can exercise the exact same logic without touching the JVM's environment.
+
+## Testing
+
+The `io.github.dornol.idkit.testing` package provides a `TestClock` and matching generator factories. Tests can advance the clock deterministically instead of relying on `System.currentTimeMillis()`.
+
+```kotlin
+import io.github.dornol.idkit.testing.TestClock
+import io.github.dornol.idkit.testing.testSnowflakeIdGenerator
+import io.github.dornol.idkit.testing.deterministicUlidIdGenerator
+import java.time.Duration
+import java.time.Instant
+
+// Fake wall clock for Snowflake
+val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+val snowflake = testSnowflakeIdGenerator(clock, workerId = 1, datacenterId = 2)
+val id1 = snowflake.nextId()
+clock.advance(Duration.ofSeconds(5))
+val id2 = snowflake.nextId() // timestamp portion is 5s ahead
+
+// Byte-identical reproducible ULIDs across runs (deterministic clock + zero randomness seed)
+val ulid = deterministicUlidIdGenerator(clock)
+val snapshot = List(5) { ulid.nextId() }   // always the same 5 strings
+```
+
+Companion factories: `testSnowflakeIdGenerator`, `testFlakeIdGenerator`, `testUlidIdGenerator`, `testUuidV7IdGenerator`, `deterministicUlidIdGenerator`.
+
 ## Common interface
 
 All generators implement `IdGenerator<T>`.

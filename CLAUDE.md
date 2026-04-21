@@ -39,11 +39,19 @@ Each time-ordered generator has a matching parser:
 
 NanoID deliberately has no parser: it is pure random and carries no recoverable metadata.
 
+### Worker ID assignment
+
+`io.github.dornol.idkit.worker.WorkerIdSource` derives a `workerId` from runtime context (hostname, K8s StatefulSet ordinal, env var, MAC). Pure helpers (`hash`, `parseOrdinal`, `fromEnv(..., env = ...)`) take the source string/map as arguments so tests can exercise them without mutating the JVM's environment.
+
+### Testing utilities
+
+`io.github.dornol.idkit.testing` provides `TestClock` (a mutable clock backed by `AtomicLong`) and factory functions that wire each generator family's `currentEpochMillis()` seam to it (`testSnowflakeIdGenerator`, `testFlakeIdGenerator`, `testUlidIdGenerator`, `testUuidV7IdGenerator`). `deterministicUlidIdGenerator` additionally zeros the ULID randomness seed so two runs emit byte-identical sequences — useful for snapshot tests.
+
 ### Generator Hierarchy
 
 - `FlakeIdGenerator` (open class) — configurable bit layout (timestamp/datacenter/worker/sequence bits), custom epoch, and adjustable timestamp resolution via `timestampDivisor`. Thread safety via `@Synchronized`.
 - `SnowflakeIdGenerator` extends `FlakeIdGenerator` — fixed Twitter Snowflake layout (41/5/5/12 bits), no additional logic.
-- `UuidV7IdGenerator` — standalone implementation producing `java.util.UUID`. Uses `AtomicLong` + CAS for monotonic timestamps; randomness via `ThreadLocalRandom`.
+- `UuidV7IdGenerator` (open class) — standalone implementation producing `java.util.UUID`. Uses `AtomicLong` + CAS for monotonic timestamps; randomness via `ThreadLocalRandom`. `nextId()` is `final override`; `currentEpochMillis()` is a `protected open` test seam that mirrors the one on `FlakeIdGenerator` and `UlidIdGenerator`.
 - `UlidIdGenerator` (open class) — 26-char Crockford Base32 string. 48-bit timestamp + 80-bit randomness, monotonic within a ms via randomness increment. Thread safety via `@Synchronized`.
 - `NanoIdGenerator` — compact URL-safe random string (21 chars / 64-char alphabet by default). **Not time-ordered**; backed by `SecureRandom`. Fills the "opaque public identifier" slot.
 
@@ -62,4 +70,4 @@ GitHub Actions workflow (`.github/workflows/maven-publish.yml`) triggers on vers
 
 - Source language is Kotlin; comments and documentation are in English.
 - Test method names use Kotlin backtick syntax with descriptive English phrases (e.g., `` `ids are strictly increasing and positive` ``).
-- Package structure: `io.github.dornol.idkit` with sub-packages `flake`, `uuidv7`, `ulid`, and `nanoid`.
+- Package structure: `io.github.dornol.idkit` with sub-packages `flake`, `uuidv7`, `ulid`, `nanoid`, `worker`, and `testing`.

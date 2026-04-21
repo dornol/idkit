@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `io.github.dornol.idkit.worker.WorkerIdSource` — helpers for deriving a `workerId` (and optionally a `datacenterId`) from runtime context. Pure functions (`hash`, `parseOrdinal`, `fromEnv(..., env = ...)`) plus convenience wrappers that read from the live environment (`fromHostname`, `fromPodOrdinal`, `fromNetworkInterface`). Separates "where the input comes from" from "how it's mapped to an id", so the same logic can be exercised deterministically in tests.
+- `io.github.dornol.idkit.testing.TestClock` — a mutable `AtomicLong`-backed clock for deterministic testing. Ships with factory functions (`testSnowflakeIdGenerator`, `testFlakeIdGenerator`, `testUlidIdGenerator`, `testUuidV7IdGenerator`) that install the clock into each generator family's `currentEpochMillis()` seam.
+- `deterministicUlidIdGenerator(clock)` — a ULID generator that is byte-identically reproducible across test runs (deterministic clock + zero-seeded randomness + spec's increment-by-one path).
+- `UuidV7IdGenerator` now exposes a `protected open fun currentEpochMillis()` test seam, matching the seam on `FlakeIdGenerator` and `UlidIdGenerator`. `nextId()` is now `final override` so the synchronization guarantee cannot be bypassed by a subclass.
+
+### Changed
+
+- `SnowflakeIdGenerator` is now `open class` so the testing-utility factory can return a subclass that overrides `currentEpochMillis()`. `UuidV7IdGenerator` likewise became `open class`. Both changes are source- and binary-compatible.
+
 ## [2.1.0] - 2026-04-21
 
 Minor release. Adds two new generator families (ULID, NanoID) and a parser trio for the time-ordered generators.
