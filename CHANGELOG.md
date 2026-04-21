@@ -5,19 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-04-21
+
+Minor release. Adds two new generator families (ULID, NanoID) and a parser trio for the time-ordered generators.
 
 ### Added
 
 - `UlidIdGenerator` — produces 26-character [ULIDs](https://github.com/ulid/spec) encoded in Crockford's Base32 (48-bit timestamp + 80-bit randomness). Monotonic within a millisecond via the spec's randomness-increment profile, handles clock regression by holding the last observed timestamp, throws `IllegalStateException` on the practically unreachable 80-bit overflow. Thread-safe via `@Synchronized`; exposes `currentEpochMillis()` as a `protected open` test seam.
-- `NanoIdGenerator` — compact, URL-safe, random string ids (21 chars / 64-char URL-safe alphabet by default, both configurable). Unlike the other generators, NanoID is **not time-ordered**; it fills the "opaque public identifier" slot (short URLs, session tokens, invite codes). Backed by `java.security.SecureRandom`, collision profile matches UUID v4.
+- `NanoIdGenerator` — compact, URL-safe, random string ids (21 chars / 64-char URL-safe alphabet by default, both configurable). Unlike the other generators, NanoID is **not time-ordered**; it fills the "opaque public identifier" slot (short URLs, session tokens, invite codes). Backed by a per-thread `java.security.SecureRandom` to avoid the shared-instance lock; collision profile matches UUID v4.
 - `FlakeIdParser` — decomposes a Flake/Snowflake `Long` id into `FlakeComponents(timestamp, datacenterId, workerId, sequence)`. Ships with `FlakeIdParser.of(generator)` for same-process parsing; can also be constructed standalone with just the layout when parsing ids from another service.
 - `UlidParser` — parses ULID strings: `timestampOf(String)`, `toBytes(String)` (16-byte big-endian), `fromBytes(ByteArray)`, `isValid(String)`.
-- `UuidV7Parser` — parses UUID v7 values: `timestampOf(UUID)` (strict v7 check) and `rawTimestampOf(UUID)` (no version check).
+- `UuidV7Parser` — parses UUID v7 values: `timestampOf(UUID)` (strict v7 check) and `rawTimestampOf(UUID)` (no version check, for interop with UUID v6 or pre-RFC-9562 v7 drafts).
 
 ### Changed
 
-- `UlidIdGenerator`: extracted the Base32 encode/decode helpers into package-internal top-level functions (`UlidCodec.kt`). The generator delegates to `encodeUlid(...)`, and the new parser shares the same code path — one source of truth for ULID encoding.
+- ULID Base32 encode/decode logic extracted into package-internal top-level helpers in `UlidCodec.kt`. The generator and the parser share a single implementation — one source of truth for the bit layout.
+- Flake/Snowflake bit-layout validation extracted into an internal `validateFlakeLayout(...)` helper so `FlakeIdGenerator` and `FlakeIdParser` cannot drift on which layouts they accept.
+- Concurrent-test scaffolding extracted to `io.github.dornol.idkit.testutil.collectConcurrently` (test-only), eliminating six near-duplicate thread-pool + latch + concurrent-set blocks. As a side effect, worker exceptions now propagate to the caller's thread instead of being silently dropped.
 
 ## [2.0.1] - 2026-04-21
 
@@ -114,6 +118,7 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[2.1.0]: https://github.com/dornol/idkit/releases/tag/2.1.0
 [2.0.1]: https://github.com/dornol/idkit/releases/tag/2.0.1
 [2.0.0]: https://github.com/dornol/idkit/releases/tag/2.0.0
 [1.2.1]: https://github.com/dornol/idkit/releases/tag/1.2.1
