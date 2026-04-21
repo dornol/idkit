@@ -29,10 +29,12 @@ class TestClockTest {
     }
 
     @Test
-    fun `TestClock advance with negative value simulates regression`() {
+    fun `TestClock regress moves the clock backwards`() {
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
-        clock.advance(-60_000L)
+        clock.regress(Duration.ofMinutes(1))
         assertEquals(Instant.parse("2024-01-14T23:59:00Z"), clock.nowInstant())
+        clock.regress(30_000L)
+        assertEquals(Instant.parse("2024-01-14T23:58:30Z"), clock.nowInstant())
     }
 
     @Test
@@ -65,7 +67,7 @@ class TestClockTest {
         val gen = testSnowflakeIdGenerator(clock, workerId = 1, datacenterId = 2)
 
         gen.nextId()
-        clock.advance(-60_000L) // back 1 minute
+        clock.regress(Duration.ofMinutes(1))
         assertThrows<ClockMovedBackwardsException> { gen.nextId() }
     }
 

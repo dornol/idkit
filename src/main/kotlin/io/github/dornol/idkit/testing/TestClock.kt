@@ -48,14 +48,24 @@ class TestClock(initial: Long) {
         current.set(epochMillis)
     }
 
-    /** Advances the clock by [duration]. Negative durations are allowed (simulate regression). */
+    /** Advances the clock by [duration]. Use [regress] to move backwards for clarity. */
     fun advance(duration: Duration) {
         current.addAndGet(duration.toMillis())
     }
 
-    /** Advances the clock by [millis]. Negative values are allowed. */
+    /** Advances the clock by [millis]. Use [regress] to move backwards for clarity. */
     fun advance(millis: Long) {
         current.addAndGet(millis)
+    }
+
+    /** Moves the clock backwards by [duration]. Convenience for `advance(-duration)`. */
+    fun regress(duration: Duration) {
+        current.addAndGet(-duration.toMillis())
+    }
+
+    /** Moves the clock backwards by [millis]. Convenience for `advance(-millis)`. */
+    fun regress(millis: Long) {
+        current.addAndGet(-millis)
     }
 
     companion object {

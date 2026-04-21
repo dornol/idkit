@@ -41,12 +41,22 @@ object WorkerIdSource {
         return ordinal and ((1 shl bits) - 1)
     }
 
-    /** Convenience: [hash] of the local hostname. */
+    /**
+     * Convenience: [hash] of the local hostname.
+     *
+     * The hostname is resolved by reading the `HOSTNAME` environment variable first (if set
+     * and non-empty), then falling back to [InetAddress.getLocalHost]'s `hostName`. The
+     * env-first order favors container / Kubernetes environments where the orchestrator sets
+     * `HOSTNAME` reliably; on local dev machines the variable may be inherited from a parent
+     * shell and take precedence over the real host name — that is expected.
+     */
     fun fromHostname(bits: Int = 10): Int = hash(localHostname(), bits)
 
     /**
      * Convenience: [parseOrdinal] of the local hostname. Returns `null` when the current
      * hostname does not fit the StatefulSet pattern.
+     *
+     * Uses the same hostname-resolution order as [fromHostname].
      */
     fun fromPodOrdinal(bits: Int = 10): Int? = parseOrdinal(localHostname(), bits)
 
@@ -69,12 +79,13 @@ object WorkerIdSource {
      *   container runtimes — prefer [fromPodOrdinal] or [fromEnv] in that case).
      */
     fun fromNetworkInterface(bits: Int = 10): Int {
-        require(bits in 1..31) { "bits must be between 1 and 31, was $bits" }
         val mac = firstNonLoopbackMac()
             ?: error("No non-loopback network interface with a hardware address is available")
-        var hash = 0
-        for (b in mac) hash = hash * 31 + (b.toInt() and 0xFF)
-        return hash and ((1 shl bits) - 1)
+        // Delegate to `hash` so the JLS-specified stability of `String.hashCode` carries
+        // over to the MAC-derived id too. Colon-separated lowercase hex is the common MAC
+        // representation and hashes identically across JVM versions.
+        val mac48 = mac.joinToString(":") { "%02x".format(it.toInt() and 0xFF) }
+        return hash(mac48, bits)
     }
 
     private val ORDINAL_SUFFIX = Regex("-(\\d+)$")

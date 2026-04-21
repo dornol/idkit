@@ -33,10 +33,14 @@ import java.util.concurrent.atomic.AtomicLong
  *    - 0..61  : random 62 bits (`rand_b`)
  *
  * ### Changes vs earlier versions
- *  - `rand_a`'s 12 bits have switched from fully random to a **monotonic counter**.
- *  - Within the same millisecond, comparing two UUIDs by `mostSignificantBits` is now strictly
- *    increasing.
- *  - Collision probability is unchanged: `rand_b`'s 62 random bits are preserved.
+ *  - 2.0.0: `rand_a`'s 12 bits switched from fully random to a **monotonic counter**.
+ *    Within the same millisecond, comparing two UUIDs by `mostSignificantBits` is now
+ *    strictly increasing. Collision probability is unchanged: `rand_b`'s 62 random bits are
+ *    preserved.
+ *  - 2.2.0: class is now `open` with a `protected open fun currentEpochMillis()` test seam
+ *    aligning with [io.github.dornol.idkit.flake.FlakeIdGenerator] and
+ *    [io.github.dornol.idkit.ulid.UlidIdGenerator]; `nextId()` is `final override` so a
+ *    subclass cannot accidentally bypass the CAS-backed synchronization.
  */
 open class UuidV7IdGenerator : IdGenerator<UUID> {
 
