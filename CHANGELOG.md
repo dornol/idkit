@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `UlidIdGenerator` — produces 26-character [ULIDs](https://github.com/ulid/spec) encoded in Crockford's Base32 (48-bit timestamp + 80-bit randomness). Monotonic within a millisecond via the spec's randomness-increment profile, handles clock regression by holding the last observed timestamp, throws `IllegalStateException` on the practically unreachable 80-bit overflow. Thread-safe via `@Synchronized`; exposes `currentEpochMillis()` as a `protected open` test seam.
+
 ## [2.0.1] - 2026-04-21
 
 Patch release. Closes a narrow race in clock-regression handling discovered in a follow-up review. No API changes.

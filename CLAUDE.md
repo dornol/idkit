@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**idkit** is a Kotlin/JVM library providing thread-safe ID generators: Snowflake (Long), Flake (configurable Long), and UUID v7. Published to Maven Central as `io.github.dornol:idkit`.
+**idkit** is a Kotlin/JVM library providing thread-safe ID generators: Snowflake (Long), Flake (configurable Long), UUID v7, and ULID. Published to Maven Central as `io.github.dornol:idkit`.
 
 ## Build Commands
 
@@ -35,12 +35,14 @@ All generators implement the common `IdGenerator<T>` interface (`src/main/kotlin
 - `FlakeIdGenerator` (open class) — configurable bit layout (timestamp/datacenter/worker/sequence bits), custom epoch, and adjustable timestamp resolution via `timestampDivisor`. Thread safety via `@Synchronized`.
 - `SnowflakeIdGenerator` extends `FlakeIdGenerator` — fixed Twitter Snowflake layout (41/5/5/12 bits), no additional logic.
 - `UuidV7IdGenerator` — standalone implementation producing `java.util.UUID`. Uses `AtomicLong` + CAS for monotonic timestamps; randomness via `ThreadLocalRandom`.
+- `UlidIdGenerator` (open class) — 26-char Crockford Base32 string. 48-bit timestamp + 80-bit randomness, monotonic within a ms via randomness increment. Thread safety via `@Synchronized`.
 
 ### Key Design Decisions
 
-- Clock regression handling: Flake/Snowflake throw `ClockMovedBackwardsException`; UUID v7 holds the previously observed timestamp and increments its internal counter to preserve monotonicity.
+- Clock regression handling: Flake/Snowflake throw `ClockMovedBackwardsException`; UUID v7 and ULID hold the previously observed timestamp and increment their internal counter/randomness to preserve monotonicity.
 - Sequence overflow in Flake/Snowflake triggers a bounded busy-spin (`Thread.onSpinWait()`) until the next time slice.
 - UUID v7 uses RFC 9562 §6.2 Method 2: the 12-bit `rand_a` field is a monotonic counter packed with the timestamp into a single `AtomicLong`, updated via CAS.
+- ULID follows the spec's monotonic profile: within the same ms the 80-bit randomness is incremented by 1, so the emitted 26-char strings compare lexicographically in generation order.
 
 ## CI/CD
 
@@ -50,4 +52,4 @@ GitHub Actions workflow (`.github/workflows/maven-publish.yml`) triggers on vers
 
 - Source language is Kotlin; comments and documentation are in English.
 - Test method names use Kotlin backtick syntax with descriptive English phrases (e.g., `` `ids are strictly increasing and positive` ``).
-- Package structure: `io.github.dornol.idkit` with sub-packages `flake` and `uuidv7`.
+- Package structure: `io.github.dornol.idkit` with sub-packages `flake`, `uuidv7`, and `ulid`.

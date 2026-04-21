@@ -6,6 +6,7 @@ Provided generators:
 - **Snowflake** (`Long`, 64 bits) — strictly increasing ids using Twitter's 41/5/5/12 bit layout.
 - **Flake** (`Long`, 64 bits) — Snowflake-derived generator with a customizable bit layout, epoch, and timestamp resolution.
 - **UUID v7** (`java.util.UUID`) — RFC 9562 §6.2 Method 2 implementation with intra-millisecond monotonicity.
+- **ULID** (`String`, 26 chars) — Crockford Base32 encoded, lexicographically sortable, monotonic within a millisecond.
 
 ## Project info
 
@@ -120,7 +121,31 @@ Constraints:
 - A larger `timestampDivisor` widens the representable range at the cost of coarser resolution.
 - The timestamp field stores `(now - epoch) / divisor` with full precision (fixed in 2.0.0).
 
-### 3) UUID v7 (`java.util.UUID`)
+### 3) ULID (`String`)
+
+Generates 26-character [ULIDs](https://github.com/ulid/spec) encoded in Crockford's Base32.
+
+```kotlin
+import io.github.dornol.idkit.ulid.UlidIdGenerator
+
+fun main() {
+    val gen = UlidIdGenerator()
+    val ulid: String = gen.nextId()
+    println("ulid = $ulid") // e.g. 01HV8B2YJ4M2N3X4Y5Z6ABCDEF
+}
+```
+
+Layout:
+- First 10 chars: 48-bit Unix-epoch-ms timestamp
+- Last 16 chars: 80-bit randomness
+
+Guarantees:
+- **Monotonic within a millisecond**: the 80-bit randomness is incremented by 1 for the second and subsequent ULIDs emitted in the same ms, so the strings compare lexicographically in generation order.
+- **Clock regression**: if the system clock moves backwards, the previously held timestamp is reused and the randomness continues to increment, preserving monotonicity.
+- **Overflow**: exhausting the 80-bit randomness within a single ms (~1.2 × 10²⁴ ids) throws `IllegalStateException`. Practically unreachable.
+- Thread-safe via `@Synchronized`.
+
+### 4) UUID v7 (`java.util.UUID`)
 
 Generates RFC 9562 UUID v7 values with `version = 7` and `variant = 0b10`.
 
@@ -167,7 +192,7 @@ interface IdGenerator<T> {
       // or alert ops.
   }
   ```
-- **UUID v7**: keeps the previously observed timestamp and increments the counter to preserve monotonicity.
+- **UUID v7 / ULID**: keep the previously observed timestamp and increment the counter/randomness to preserve monotonicity.
 
 ### Timestamp exhaustion
 The `timestampBits` field of Flake/Snowflake has a finite range. Once exceeded, `IllegalStateException` is raised, and because wall-clock time only moves forward the state is **non-recoverable**. Reconstruct the generator with a wider `timestampBits` or a more recent `epochStart`.
@@ -184,6 +209,7 @@ JUnit 5 test files:
 - `src/test/kotlin/io/github/dornol/idkit/flake/SnowflakeIdGeneratorTest.kt`
 - `src/test/kotlin/io/github/dornol/idkit/flake/FlakeIdGeneratorTest.kt`
 - `src/test/kotlin/io/github/dornol/idkit/uuidv7/UuidV7IdGeneratorTest.kt`
+- `src/test/kotlin/io/github/dornol/idkit/ulid/UlidIdGeneratorTest.kt`
 
 Run:
 ```bash
@@ -197,6 +223,7 @@ Run:
 - Keep the system clock in good NTP sync.
 - Snowflake has a per-ms sequence ceiling of 4096.
 - UUID v7 has a per-ms counter ceiling of 4096 and borrows from the clock when exceeded; sustained overload will push the embedded timestamp ahead of the wall clock.
+- ULID has a per-ms randomness budget of 2⁸⁰ (≈ 1.2 × 10²⁴), which is unreachable in practice.
 
 ## Logging
 
