@@ -12,7 +12,7 @@ Provided generators:
 - Language / runtime: Kotlin on JVM (JDK 11)
 - Kotlin: 2.3.10, Gradle Kotlin DSL
 - Tests: JUnit 5
-- Coordinates: `io.github.dornol:idkit:2.0.0`
+- Coordinates: `io.github.dornol:idkit:2.0.1`
 
 > **Upgrading from 1.x?** 2.0.0 contains multiple breaking changes.
 > Please read the 2.0.0 section of [CHANGELOG.md](CHANGELOG.md) first.
@@ -24,14 +24,14 @@ Fetch the artifact from Maven Central.
 Gradle (Kotlin DSL):
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:2.0.0")
+    implementation("io.github.dornol:idkit:2.0.1")
 }
 ```
 
 Gradle (Groovy):
 ```groovy
 dependencies {
-    implementation 'io.github.dornol:idkit:2.0.0'
+    implementation 'io.github.dornol:idkit:2.0.1'
 }
 ```
 
@@ -40,7 +40,7 @@ Maven:
 <dependency>
   <groupId>io.github.dornol</groupId>
   <artifactId>idkit</artifactId>
-  <version>2.0.0</version>
+  <version>2.0.1</version>
 </dependency>
 ```
 

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-04-21
+
+Patch release. Closes a narrow race in clock-regression handling discovered in a follow-up review. No API changes.
+
+### Fixed
+
+- `FlakeIdGenerator.waitForNextSlice` now throws `ClockMovedBackwardsException` when the wall clock is observed to regress during the busy-spin for the next time slice. Previously the top-level regression check in `nextId()` only covered the initial clock read; if NTP back-jumped after sequence overflow but before the first spin iteration, the loop would wait for the wall clock to catch up — potentially for minutes or hours, pinning one CPU core.
+
+### Changed
+
+- Documentation is now maintained in English. All KDoc, inline comments, and the README have been translated.
+- POM metadata: added `inceptionYear` and an `issueManagement` entry pointing at GitHub Issues.
+
+### Removed (internal)
+
+- `LongHashMapBackedMutableMap` test helper. The comment claimed it avoided boxing, but the underlying `ConcurrentHashMap<Long, Boolean>` still boxed `Long` keys, so the class was a dead optimization. Tests now use `ConcurrentHashMap` directly.
+
 ## [2.0.0] - 2026-04-21
 
 Large correctness and consistency release. Multiple breaking changes — consumers upgrading from 1.x should review the migration notes below.
@@ -83,6 +100,7 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[2.0.1]: https://github.com/dornol/idkit/releases/tag/2.0.1
 [2.0.0]: https://github.com/dornol/idkit/releases/tag/2.0.0
 [1.2.1]: https://github.com/dornol/idkit/releases/tag/1.2.1
 [1.2.0]: https://github.com/dornol/idkit/releases/tag/1.2.0
