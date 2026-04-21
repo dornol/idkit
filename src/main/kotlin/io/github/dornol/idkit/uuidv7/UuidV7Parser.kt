@@ -24,9 +24,11 @@ object UuidV7Parser {
     }
 
     /**
-     * Returns the raw millisecond value in the first 48 bits of [uuid]'s `mostSigBits`,
-     * without validating [uuid]'s version. Useful for bulk parsing where the caller has
-     * already filtered on version or deliberately wants the top-48 value regardless.
+     * Returns the top 48 bits of [uuid]'s `mostSigBits`, without validating the version
+     * field. Intended for interop scenarios where the stream carries UUIDs produced against
+     * older or non-standard time-ordered profiles (pre-RFC-9562 v7 drafts, UUID v6, or
+     * custom time-ordered UUIDs) whose timestamp layout matches v7 but whose version field
+     * does not. Use [timestampOf] for strict v7 input.
      */
     fun rawTimestampOf(uuid: UUID): Long = uuid.mostSignificantBits ushr 16
 }

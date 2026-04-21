@@ -33,23 +33,9 @@ class FlakeIdParser(
     private val epochStartMillis: Long = epochStart.toEpochMilli()
 
     init {
-        require(timestampBits > 0) { "timestampBits must be greater than 0, but was $timestampBits" }
-        require(timestampDivisor > 0) { "timestampDivisor must be greater than 0, but was $timestampDivisor" }
-        require(datacenterIdBits in 1..5) {
-            "datacenterIdBits must be between 1 and 5, but was $datacenterIdBits"
-        }
-        require(workerIdBits in 1..31) {
-            "workerIdBits must be between 1 and 31, but was $workerIdBits"
-        }
+        validateFlakeLayout(timestampBits, datacenterIdBits, workerIdBits, timestampDivisor)
 
-        val unusedBits = 1
-        val totalBits = unusedBits + timestampBits + datacenterIdBits + workerIdBits
-        require(totalBits <= 63) {
-            "Total bits (unused=$unusedBits + timestampBits=$timestampBits + " +
-                    "datacenterIdBits=$datacenterIdBits + workerIdBits=$workerIdBits = $totalBits) " +
-                    "cannot exceed 63 (need at least 1 bit for sequence)"
-        }
-
+        val totalBits = UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits
         sequenceBits = 64 - totalBits
         maxSequence = (1L shl sequenceBits) - 1
         maxWorkerIdL = (1L shl workerIdBits) - 1

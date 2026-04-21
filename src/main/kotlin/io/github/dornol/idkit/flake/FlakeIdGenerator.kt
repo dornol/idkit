@@ -50,11 +50,6 @@ open class FlakeIdGenerator(
 ) : IdGenerator<Long> {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    companion object {
-        /** The most significant bit (sign bit) is reserved and unused. */
-        private const val UNUSED_BITS = 1
-    }
-
     /** Maximum representable worker / datacenter id. */
     val maxWorkerId: Int = (1 shl workerIdBits) - 1
     val maxDatacenterId: Int = (1 shl datacenterIdBits) - 1
@@ -81,22 +76,7 @@ open class FlakeIdGenerator(
     private var lastGeneratedTimestamp = -1L
 
     init {
-        require(timestampBits > 0) { "timestampBits must be greater than 0, but was $timestampBits" }
-        require(timestampDivisor > 0) { "timestampDivisor must be greater than 0, but was $timestampDivisor" }
-        require(datacenterIdBits in 1..5) {
-            "datacenterIdBits must be between 1 and 5 (max 32 datacenters), but was $datacenterIdBits"
-        }
-        // Upper bound 31: (1 shl workerIdBits) must fit in positive Int range.
-        require(workerIdBits in 1..31) {
-            "workerIdBits must be between 1 and 31, but was $workerIdBits"
-        }
-
-        val totalBits = UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits
-        require(totalBits <= 63) {
-            "Total bits (unused=$UNUSED_BITS + timestampBits=$timestampBits + " +
-                    "datacenterIdBits=$datacenterIdBits + workerIdBits=$workerIdBits = $totalBits) " +
-                    "cannot exceed 63 (need at least 1 bit for sequence)"
-        }
+        validateFlakeLayout(timestampBits, datacenterIdBits, workerIdBits, timestampDivisor)
 
         require(workerId in 0..maxWorkerId) {
             "workerId must be between 0 and $maxWorkerId, but was $workerId"
@@ -105,6 +85,7 @@ open class FlakeIdGenerator(
             "datacenterId must be between 0 and $maxDatacenterId, but was $datacenterId"
         }
 
+        val totalBits = UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits
         sequenceBits = 64 - totalBits
         maxSequence = (1L shl sequenceBits) - 1
 

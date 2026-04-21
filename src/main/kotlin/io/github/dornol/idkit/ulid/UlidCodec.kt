@@ -63,7 +63,7 @@ internal fun encodeUlid(timestamp: Long, randomHi: Long, randomLo: Long): String
 
 /**
  * Decodes the first 10 chars of [ulid] into the 48-bit timestamp value. Cheaper than
- * [decodeUlid] when only the timestamp is needed.
+ * [withDecodedUlid] when only the timestamp is needed.
  *
  * @throws IllegalArgumentException if [ulid] is not 26 chars, contains invalid characters,
  *   or its first char encodes bits that overflow the 48-bit timestamp range.
@@ -83,12 +83,13 @@ internal fun decodeTimestamp(ulid: String): Long {
 }
 
 /**
- * Fully decodes [ulid] into `(timestamp, randomHi, randomLo)`. Returns a three-element
- * `LongArray` to avoid an allocation per triple.
+ * Fully decodes [ulid] and passes `(timestamp, randomHi, randomLo)` to [consume], returning
+ * whatever [consume] produces. Inline so the three decoded values stay on the caller's stack
+ * and no intermediate container (e.g. a `LongArray` or a `Triple`) is allocated.
  *
  * @throws IllegalArgumentException on invalid length, invalid char, or timestamp overflow.
  */
-internal fun decodeUlid(ulid: String): LongArray {
+internal inline fun <R> withDecodedUlid(ulid: String, consume: (ts: Long, randomHi: Long, randomLo: Long) -> R): R {
     val ts = decodeTimestamp(ulid) // reuses validation for chars 0..9
 
     // chars 10..25 = 16 chars = 80 bits of randomness. Decode in the mirror of encodeUlid.
@@ -106,25 +107,30 @@ internal fun decodeUlid(ulid: String): LongArray {
         randomLo = (randomLo shl 5) or decodeChar(ulid, i).toLong()
     }
 
-    return longArrayOf(ts, randomHi, randomLo)
+    return consume(ts, randomHi, randomLo)
 }
 
 /** Returns `true` if [ulid] is a syntactically valid ULID (length, alphabet, timestamp range). */
 internal fun isValidUlid(ulid: String): Boolean {
     if (ulid.length != 26) return false
     for (i in 0 until 26) {
-        val c = ulid[i]
-        if (c.code !in DECODE_TABLE.indices || DECODE_TABLE[c.code] < 0) return false
+        if (lookup(ulid[i]) < 0) return false
     }
-    return DECODE_TABLE[ulid[0].code] < 8
+    return lookup(ulid[0]) < 8
+}
+
+/**
+ * Looks up the 5-bit value for [c] in [DECODE_TABLE], or returns `-1` if [c] is outside the
+ * table's range or not a Crockford Base32 character.
+ */
+private fun lookup(c: Char): Int {
+    val code = c.code
+    return if (code in DECODE_TABLE.indices) DECODE_TABLE[code] else -1
 }
 
 private fun decodeChar(ulid: String, index: Int): Int {
     val c = ulid[index]
-    if (c.code !in DECODE_TABLE.indices) {
-        throw IllegalArgumentException("Invalid ULID char '$c' at position $index")
-    }
-    val value = DECODE_TABLE[c.code]
+    val value = lookup(c)
     require(value >= 0) { "Invalid ULID char '$c' at position $index" }
     return value
 }

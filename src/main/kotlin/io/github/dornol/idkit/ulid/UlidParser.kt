@@ -26,9 +26,8 @@ object UlidParser {
      *
      * @throws IllegalArgumentException if [ulid] is malformed.
      */
-    fun toBytes(ulid: String): ByteArray {
-        val parts = decodeUlid(ulid)
-        return packToBytes(parts[0], parts[1], parts[2])
+    fun toBytes(ulid: String): ByteArray = withDecodedUlid(ulid) { ts, hi, lo ->
+        packToBytes(ts, hi, lo)
     }
 
     /**
