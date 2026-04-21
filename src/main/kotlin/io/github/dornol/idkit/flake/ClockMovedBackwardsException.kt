@@ -17,6 +17,8 @@ package io.github.dornol.idkit.flake
  *
  * @property driftAmount 감지된 역행 폭 ([FlakeIdGenerator.timestampDivisor] 단위).
  * @property timestampDivisor 생성기에 설정된 divisor (단위 해석용).
+ *
+ * @since 2.0.0
  */
 class ClockMovedBackwardsException(
     val driftAmount: Long,

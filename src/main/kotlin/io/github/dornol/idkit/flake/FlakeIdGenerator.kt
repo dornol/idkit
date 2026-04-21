@@ -29,6 +29,11 @@ import java.time.Instant
  *  - **delta 계산 정밀도**: timestamp 필드는 `(now - epoch) / divisor` 로 계산된다.
  *    이전 버전은 `now/divisor - epoch/divisor` 방식이라 `divisor > 1` 이면서 `epoch` 가
  *    divisor 의 배수가 아닐 때 ±1 오차가 났는데, 이 버전에서 정밀 계산으로 교정되었다.
+ *
+ * 상속 관련 주의: 클래스는 `open` 이지만 [nextId] 는 `@Synchronized` 가 적용된 `final override`
+ * 이므로 서브클래스에서 재정의할 수 없다. 서브클래스는 [SnowflakeIdGenerator] 처럼
+ * 기본 비트 레이아웃을 미리 바인딩하는 얇은 래퍼 용도로만 사용하도록 설계되었다.
+ * 테스트에서 가짜 시계가 필요하면 [currentEpochMillis] 를 override 하라.
  */
 open class FlakeIdGenerator(
     val timestampBits: Int = 41,
@@ -128,7 +133,7 @@ open class FlakeIdGenerator(
      * @throws IllegalStateException timestamp 델타가 [timestampBits] 로 표현 가능한 최대값을 초과했을 때.
      */
     @Synchronized
-    override fun nextId(): Long {
+    final override fun nextId(): Long {
         var timestamp = computeSlice(currentEpochMillis())
 
         if (timestamp < lastGeneratedTimestamp) {
@@ -170,6 +175,8 @@ open class FlakeIdGenerator(
      *
      * 테스트에서 가짜 시계를 주입할 수 있도록 `protected open` 으로 노출된다.
      * 프로덕션 코드에서는 override 하지 말 것.
+     *
+     * @since 2.0.0
      */
     protected open fun currentEpochMillis(): Long = System.currentTimeMillis()
 
