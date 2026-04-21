@@ -226,7 +226,7 @@ class FlakeIdGeneratorTest {
             datacenterId = 1,
             workerId = 1,
         ) {
-            override fun currentTimestamp(): Long = fakeNow.get() / timestampDivisor
+            override fun currentEpochMillis(): Long = fakeNow.get()
         }
 
         // prime the generator so `lastGeneratedTimestamp` is populated
@@ -244,6 +244,51 @@ class FlakeIdGeneratorTest {
         fakeNow.addAndGet(120_000L) // move past original prime timestamp
         val recovered = gen.nextId()
         assertTrue(recovered > 0L)
+    }
+
+    @Test
+    fun `timestamp delta uses precise (nowMillis - epochMillis) division`() {
+        // With divisor=10 and epoch not aligned to divisor, the legacy `now/10 - epoch/10`
+        // formula produced a value that differed from the precise `(now - epoch)/10` by ±1.
+        //
+        //   now=1060, epoch=1003, divisor=10
+        //     legacy:  1060/10 - 1003/10 = 106 - 100 = 6
+        //     precise: (1060 - 1003)/10  = 57/10    = 5
+        val divisor = 10L
+        val epoch = Instant.ofEpochMilli(1003L)
+        val fakeNow = AtomicLong(1060L)
+        val gen = object : FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            timestampDivisor = divisor,
+            epochStart = epoch,
+            datacenterId = 0,
+            workerId = 0,
+        ) {
+            override fun currentEpochMillis(): Long = fakeNow.get()
+        }
+
+        val id = gen.nextId()
+        val timestampLeftShift = gen.datacenterIdBits + gen.workerIdBits + gen.sequenceBits
+        val actualDelta = id shr timestampLeftShift
+
+        assertEquals(5L, actualDelta, "Expected precise (1060-1003)/10 = 5, got $actualDelta")
+    }
+
+    @Test
+    fun `constructor rejects timestampBits of zero`() {
+        assertThrows<IllegalArgumentException> {
+            FlakeIdGenerator(
+                timestampBits = 0,
+                datacenterIdBits = 5,
+                workerIdBits = 5,
+                timestampDivisor = 1L,
+                epochStart = Instant.EPOCH,
+                datacenterId = 0,
+                workerId = 0,
+            )
+        }
     }
 
     @Test

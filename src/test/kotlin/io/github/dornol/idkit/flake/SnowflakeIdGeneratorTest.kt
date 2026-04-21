@@ -23,7 +23,7 @@ class SnowflakeIdGeneratorTest {
     private val workerIdLeftShift = sequenceBits
 
     @Test
-    fun `constructor rejects out of range workerId and dataCenterId`() {
+    fun `constructor rejects out of range workerId and datacenterId`() {
         // workerId < 0
         assertThrows<IllegalArgumentException> {
             SnowflakeIdGenerator(-1, 0)
@@ -32,11 +32,11 @@ class SnowflakeIdGeneratorTest {
         assertThrows<IllegalArgumentException> {
             SnowflakeIdGenerator(maxWorkerId + 1, 0)
         }
-        // dataCenterId < 0
+        // datacenterId < 0
         assertThrows<IllegalArgumentException> {
             SnowflakeIdGenerator(0, -1)
         }
-        // dataCenterId > MAX
+        // datacenterId > MAX
         assertThrows<IllegalArgumentException> {
             SnowflakeIdGenerator(0, maxDatacenterId + 1)
         }
@@ -46,7 +46,7 @@ class SnowflakeIdGeneratorTest {
 
     @Test
     fun `ids are strictly increasing and positive`() {
-        val gen = SnowflakeIdGenerator(workerId = 1, dataCenterId = 1)
+        val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 1)
         var prev = gen.nextId()
         assertTrue(prev > 0)
         repeat(20_000) {
@@ -87,7 +87,7 @@ class SnowflakeIdGeneratorTest {
     @Test
     fun `custom epoch adjusts timestamp portion correctly`() {
         val customEpoch = Instant.ofEpochMilli(System.currentTimeMillis() - 10_000) // 10 seconds ago
-        val gen = SnowflakeIdGenerator(workerId = 1, dataCenterId = 1, epochStart = customEpoch)
+        val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 1, epochStart = customEpoch)
 
         val id = gen.nextId()
 
@@ -100,7 +100,7 @@ class SnowflakeIdGeneratorTest {
         assertTrue(timestampPortion >= expectedApprox - 1000, "Timestamp portion should be close to expected value")
 
         // Compare with default epoch - custom epoch should produce much smaller timestamp
-        val defaultGen = SnowflakeIdGenerator(workerId = 1, dataCenterId = 1)
+        val defaultGen = SnowflakeIdGenerator(workerId = 1, datacenterId = 1)
         val defaultId = defaultGen.nextId()
         val defaultTimestampPortion = defaultId shr timestampLeftShift
 
@@ -114,7 +114,7 @@ class SnowflakeIdGeneratorTest {
     fun `concurrent generation produces unique ids`() {
         val threads = 8
         val perThread = 5000
-        val gen = SnowflakeIdGenerator(workerId = 3, dataCenterId = 2)
+        val gen = SnowflakeIdGenerator(workerId = 3, datacenterId = 2)
 
         val pool = Executors.newFixedThreadPool(threads)
         val gate = CountDownLatch(1)
