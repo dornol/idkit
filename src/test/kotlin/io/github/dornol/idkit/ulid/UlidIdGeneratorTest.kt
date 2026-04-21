@@ -1,17 +1,13 @@
 package io.github.dornol.idkit.ulid
 
+import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 class UlidIdGeneratorTest {
@@ -33,7 +29,7 @@ class UlidIdGeneratorTest {
 
     @Test
     fun `ulid uses only Crockford Base32 alphabet`() {
-        val allowed = "0123456789ABCDEFGHJKMNPQRSTVWXYZ".toSet()
+        val allowed = CROCKFORD_BASE32_ALPHABET.toSet()
         repeat(10_000) {
             val ulid = generator.nextId()
             ulid.forEach { c ->
@@ -101,48 +97,19 @@ class UlidIdGeneratorTest {
     fun `concurrent generation yields unique ulids`() {
         val threads = 8
         val perThread = 10_000
-        val pool = Executors.newFixedThreadPool(threads)
-        val gate = CountDownLatch(1)
-        val done = CountDownLatch(threads)
-        val set = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>(threads * perThread))
-
-        repeat(threads) {
-            pool.submit {
-                try {
-                    gate.await()
-                    repeat(perThread) {
-                        val ulid = generator.nextId()
-                        assertTrue(set.add(ulid), "Duplicate ULID: '$ulid'")
-                    }
-                } finally {
-                    done.countDown()
-                }
-            }
-        }
-
-        gate.countDown()
-        val finished = done.await(30, TimeUnit.SECONDS)
-        pool.shutdown()
-        assertTrue(finished, "Workers did not finish in time")
-        assertEquals(threads * perThread, set.size)
+        val ulids = collectConcurrently(threads, perThread) { generator.nextId() }
+        assertEquals(threads * perThread, ulids.size)
     }
 
     @Test
     fun `throws on 80-bit randomness overflow within same millisecond`() {
-        // Pre-seed the generator with randomness saturated (randomHi = 0xFFFF, randomLo = -1L).
-        // The next same-ms call must overflow and throw.
+        // Override the randomness seam so the first nextId() starts with a saturated
+        // 80-bit value; the second same-ms call increments into overflow and must throw.
         val gen = object : UlidIdGenerator() {
             override fun currentEpochMillis(): Long = 1_700_000_000_000L
+            override fun drawRandomness(): LongArray = longArrayOf(0xFFFFL, -1L)
         }
-        val cls = UlidIdGenerator::class.java
-        val lastTsField = cls.getDeclaredField("lastTimestamp").apply { isAccessible = true }
-        val randHiField = cls.getDeclaredField("randomHi").apply { isAccessible = true }
-        val randLoField = cls.getDeclaredField("randomLo").apply { isAccessible = true }
-
-        lastTsField.setLong(gen, 1_700_000_000_000L)
-        randHiField.setLong(gen, 0xFFFFL)
-        randLoField.setLong(gen, -1L) // 0xFFFF_FFFF_FFFF_FFFF
-
+        gen.nextId() // seeds state at the 80-bit saturation point
         assertThrows<IllegalStateException> { gen.nextId() }
     }
 
@@ -164,10 +131,9 @@ class UlidIdGeneratorTest {
 
     private fun decodeTimestamp(ulid: String): Long {
         // Decode the first 10 Crockford Base32 chars into a 48-bit timestamp.
-        val alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
         var ts = 0L
         for (i in 0 until 10) {
-            val v = alphabet.indexOf(ulid[i])
+            val v = CROCKFORD_BASE32_ALPHABET.indexOf(ulid[i])
             assertNotEquals(-1, v, "char '${ulid[i]}' is not in the Crockford alphabet")
             ts = (ts shl 5) or v.toLong()
         }

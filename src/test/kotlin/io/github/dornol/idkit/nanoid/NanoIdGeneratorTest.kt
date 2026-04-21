@@ -1,14 +1,10 @@
 package io.github.dornol.idkit.nanoid
 
+import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class NanoIdGeneratorTest {
 
@@ -75,30 +71,8 @@ class NanoIdGeneratorTest {
         val gen = NanoIdGenerator()
         val threads = 8
         val perThread = 10_000
-        val pool = Executors.newFixedThreadPool(threads)
-        val gate = CountDownLatch(1)
-        val done = CountDownLatch(threads)
-        val set = Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>(threads * perThread))
-
-        repeat(threads) {
-            pool.submit {
-                try {
-                    gate.await()
-                    repeat(perThread) {
-                        val id = gen.nextId()
-                        assertTrue(set.add(id), "Duplicate: '$id'")
-                    }
-                } finally {
-                    done.countDown()
-                }
-            }
-        }
-
-        gate.countDown()
-        val finished = done.await(30, TimeUnit.SECONDS)
-        pool.shutdown()
-        assertTrue(finished, "workers did not finish in time")
-        assertEquals(threads * perThread, set.size)
+        val ids = collectConcurrently(threads, perThread) { gen.nextId() }
+        assertEquals(threads * perThread, ids.size)
     }
 
     @Test

@@ -1,13 +1,10 @@
 package io.github.dornol.idkit.flake
 
+import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -329,29 +326,7 @@ class FlakeIdGeneratorTest {
         val perThread = 5_000
         val gen = FlakeIdGenerator(41, 5, 5, 1L, Instant.EPOCH, datacenterId = 2, workerId = 3)
 
-        val pool = Executors.newFixedThreadPool(threads)
-        val start = CountDownLatch(1)
-        val done = CountDownLatch(threads)
-        val set = Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>(threads * perThread))
-
-        repeat(threads) {
-            pool.submit {
-                try {
-                    start.await()
-                    repeat(perThread) {
-                        val id = gen.nextId()
-                        assertTrue(set.add(id), "Duplicate ID detected: $id")
-                    }
-                } finally {
-                    done.countDown()
-                }
-            }
-        }
-
-        start.countDown()
-        val finished = done.await(30, TimeUnit.SECONDS)
-        pool.shutdown()
-        assertTrue(finished, "Workers did not finish in time")
-        assertEquals(threads * perThread, set.size)
+        val ids = collectConcurrently(threads, perThread) { gen.nextId() }
+        assertEquals(threads * perThread, ids.size)
     }
 }

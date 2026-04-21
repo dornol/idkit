@@ -1,14 +1,10 @@
 package io.github.dornol.idkit.flake
 
+import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class SnowflakeIdGeneratorTest {
     private val workerIdBits = 5
@@ -114,34 +110,7 @@ class SnowflakeIdGeneratorTest {
         val perThread = 5000
         val gen = SnowflakeIdGenerator(workerId = 3, datacenterId = 2)
 
-        val pool = Executors.newFixedThreadPool(threads)
-        val gate = CountDownLatch(1)
-        val done = CountDownLatch(threads)
-        val set = Collections.newSetFromMap(ConcurrentHashMap<Long, Boolean>(perThread * threads))
-
-        repeat(threads) {
-            pool.submit {
-                try {
-                    gate.await()
-                    repeat(perThread) {
-                        val id = gen.nextId()
-                        // add returns false if duplicate
-                        assertTrue(set.add(id), "Duplicate ID detected: $id")
-                    }
-                } finally {
-                    done.countDown()
-                }
-            }
-        }
-
-        // Start all workers
-        gate.countDown()
-        // Wait at most 30 seconds
-        val finished = done.await(30, TimeUnit.SECONDS)
-        pool.shutdown()
-        assertTrue(finished, "Workers did not finish in time")
-
-        val expected = threads * perThread
-        assertEquals(expected, set.size)
+        val ids = collectConcurrently(threads, perThread) { gen.nextId() }
+        assertEquals(threads * perThread, ids.size)
     }
 }

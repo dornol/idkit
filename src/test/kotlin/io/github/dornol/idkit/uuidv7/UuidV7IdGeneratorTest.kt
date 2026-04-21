@@ -1,15 +1,11 @@
 package io.github.dornol.idkit.uuidv7
 
+import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.util.Collections
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class UuidV7IdGeneratorTest {
 
@@ -74,30 +70,8 @@ class UuidV7IdGeneratorTest {
     fun `concurrent generation produces unique UUIDs`() {
         val threads = 8
         val perThread = 5000
-        val pool = Executors.newFixedThreadPool(threads)
-        val gate = CountDownLatch(1)
-        val done = CountDownLatch(threads)
-        val set = Collections.newSetFromMap(ConcurrentHashMap<UUID, Boolean>(threads * perThread))
-
-        repeat(threads) {
-            pool.submit {
-                try {
-                    gate.await()
-                    repeat(perThread) {
-                        val uuid = generator.nextId()
-                        assertTrue(set.add(uuid), "Duplicate UUID detected: $uuid")
-                    }
-                } finally {
-                    done.countDown()
-                }
-            }
-        }
-
-        gate.countDown()
-        val finished = done.await(30, TimeUnit.SECONDS)
-        pool.shutdown()
-        assertTrue(finished, "Workers did not finish in time")
-        assertEquals(threads * perThread, set.size)
+        val uuids = collectConcurrently(threads, perThread) { generator.nextId() }
+        assertEquals(threads * perThread, uuids.size)
     }
 
     @Test
@@ -153,39 +127,12 @@ class UuidV7IdGeneratorTest {
 
     @Test
     fun `concurrent generation preserves global monotonicity of mostSigBits`() {
-        // Under contention, CAS must still produce globally ordered mostSigBits (per-generator).
+        // Under contention, CAS must still produce distinct mostSigBits (per-generator).
+        // Two UUIDs with different leastSigBits but identical mostSigBits would be a monotonicity
+        // bug, so we check uniqueness specifically over the mostSigBits slice.
         val threads = 8
         val perThread = 10_000
-        val pool = Executors.newFixedThreadPool(threads)
-        val gate = CountDownLatch(1)
-        val done = CountDownLatch(threads)
-        val allUuids = Collections.synchronizedList(ArrayList<UUID>(threads * perThread))
-
-        repeat(threads) {
-            pool.submit {
-                try {
-                    gate.await()
-                    val local = ArrayList<UUID>(perThread)
-                    repeat(perThread) { local += generator.nextId() }
-                    allUuids.addAll(local)
-                } finally {
-                    done.countDown()
-                }
-            }
-        }
-        gate.countDown()
-        val finished = done.await(30, TimeUnit.SECONDS)
-        pool.shutdown()
-        assertTrue(finished, "Workers did not finish in time")
-
-        // After sorting by mostSigBits, there must be no duplicates — proving every
-        // generator call produced a distinct (ts, counter) pair.
-        val sorted = allUuids.map { it.mostSignificantBits }.sorted()
-        for (i in 1 until sorted.size) {
-            assertTrue(
-                sorted[i] > sorted[i - 1],
-                "Duplicate mostSigBits detected at index $i: ${sorted[i - 1]} == ${sorted[i]}"
-            )
-        }
+        val msbs = collectConcurrently(threads, perThread) { generator.nextId().mostSignificantBits }
+        assertEquals(threads * perThread, msbs.size)
     }
 }

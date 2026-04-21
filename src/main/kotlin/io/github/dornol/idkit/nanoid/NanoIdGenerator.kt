@@ -16,8 +16,9 @@ import java.security.SecureRandom
  * probability matches that of UUID v4 (≈ 2¹²² distinct ids; one billion ids per second for
  * ~35 years to reach a 1-in-a-billion collision chance).
  *
- * Thread-safe: the internal [SecureRandom] is thread-safe per the JDK contract (concurrent
- * calls serialize internally, but never corrupt state).
+ * Thread-safe: a per-thread [SecureRandom] is used (`ThreadLocal.withInitial`) to avoid the
+ * shared-instance synchronization that would otherwise bottleneck multi-threaded callers.
+ * The per-thread instances remain CSPRNG-quality.
  *
  * @param size the length of each generated id in characters. Must be ≥ 1.
  * @param alphabet the set of characters to sample from. Must contain at least 2 characters.
@@ -39,13 +40,16 @@ class NanoIdGenerator(
         }
     }
 
-    private val random = SecureRandom()
+    // ThreadLocal avoids the internal synchronization on a shared SecureRandom under contention.
+    // Each thread gets its own CSPRNG; no security downgrade.
+    private val random: ThreadLocal<SecureRandom> = ThreadLocal.withInitial { SecureRandom() }
 
     override fun nextId(): String {
+        val rng = random.get()
         val alphabetLen = alphabet.length
         val chars = CharArray(size)
         for (i in 0 until size) {
-            chars[i] = alphabet[random.nextInt(alphabetLen)]
+            chars[i] = alphabet[rng.nextInt(alphabetLen)]
         }
         return String(chars)
     }
