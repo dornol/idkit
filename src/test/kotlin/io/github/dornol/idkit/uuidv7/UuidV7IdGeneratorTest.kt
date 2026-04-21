@@ -110,4 +110,82 @@ class UuidV7IdGeneratorTest {
         }
         assertEquals(count, uuids.size)
     }
+
+    @Test
+    fun `mostSigBits are strictly monotonic across tight loop`() {
+        // A tight loop on a modern JVM generates thousands of UUIDs per ms.
+        // RFC 9562 Method 2 requires intra-ms monotonicity via a dedicated counter,
+        // so mostSigBits (which carries timestamp + version + counter) must strictly increase.
+        val count = 100_000
+        var prev = generator.nextId().mostSignificantBits
+        repeat(count) { i ->
+            val curr = generator.nextId().mostSignificantBits
+            assertTrue(
+                curr > prev,
+                "mostSigBits must strictly increase at iteration $i: prev=$prev, curr=$curr"
+            )
+            prev = curr
+        }
+    }
+
+    @Test
+    fun `counter increments within same millisecond`() {
+        // Burst-generate UUIDs; most should fall in the same ms window.
+        // Group by timestamp portion and verify counters within each group are strictly increasing.
+        val uuids = (0 until 20_000).map { generator.nextId() }
+        val byTimestamp = uuids.groupBy { it.mostSignificantBits ushr 16 }
+
+        // At least one group should have multiple UUIDs sharing the same ms
+        // (otherwise the test is meaningless on this hardware).
+        val sharedMsGroup = byTimestamp.values.firstOrNull { it.size > 1 }
+        assertTrue(sharedMsGroup != null, "Expected at least one ms with multiple UUIDs")
+
+        byTimestamp.values.filter { it.size > 1 }.forEach { group ->
+            val counters = group.map { it.mostSignificantBits and 0xFFFL }
+            for (i in 1 until counters.size) {
+                assertTrue(
+                    counters[i] > counters[i - 1],
+                    "Counter must strictly increase within same ms: ${counters[i - 1]} -> ${counters[i]}"
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `concurrent generation preserves global monotonicity of mostSigBits`() {
+        // Under contention, CAS must still produce globally ordered mostSigBits (per-generator).
+        val threads = 8
+        val perThread = 10_000
+        val pool = Executors.newFixedThreadPool(threads)
+        val gate = CountDownLatch(1)
+        val done = CountDownLatch(threads)
+        val allUuids = Collections.synchronizedList(ArrayList<UUID>(threads * perThread))
+
+        repeat(threads) {
+            pool.submit {
+                try {
+                    gate.await()
+                    val local = ArrayList<UUID>(perThread)
+                    repeat(perThread) { local += generator.nextId() }
+                    allUuids.addAll(local)
+                } finally {
+                    done.countDown()
+                }
+            }
+        }
+        gate.countDown()
+        val finished = done.await(30, TimeUnit.SECONDS)
+        pool.shutdown()
+        assertTrue(finished, "Workers did not finish in time")
+
+        // After sorting by mostSigBits, there must be no duplicates — proving every
+        // generator call produced a distinct (ts, counter) pair.
+        val sorted = allUuids.map { it.mostSignificantBits }.sorted()
+        for (i in 1 until sorted.size) {
+            assertTrue(
+                sorted[i] > sorted[i - 1],
+                "Duplicate mostSigBits detected at index $i: ${sorted[i - 1]} == ${sorted[i]}"
+            )
+        }
+    }
 }

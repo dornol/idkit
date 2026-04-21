@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 class FlakeIdGeneratorTest {
 
@@ -211,6 +212,38 @@ class FlakeIdGeneratorTest {
         val expectedLowerBound = (nowDiv - epochDiv) - 1 // allow small timing gap
 
         assertTrue(tsPortion >= expectedLowerBound, "Timestamp portion should reflect divisor and epoch")
+    }
+
+    @Test
+    fun `throws ClockMovedBackwardsException when system clock regresses`() {
+        val fakeNow = AtomicLong(System.currentTimeMillis())
+        val gen = object : FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            timestampDivisor = 1L,
+            epochStart = Instant.EPOCH,
+            datacenterId = 1,
+            workerId = 1,
+        ) {
+            override fun currentTimestamp(): Long = fakeNow.get() / timestampDivisor
+        }
+
+        // prime the generator so `lastGeneratedTimestamp` is populated
+        gen.nextId()
+
+        // Simulate clock moving backwards by 1 minute
+        fakeNow.addAndGet(-60_000L)
+
+        val ex = assertThrows<ClockMovedBackwardsException> { gen.nextId() }
+        assertTrue(ex.driftAmount > 0, "driftAmount must be positive, was ${ex.driftAmount}")
+        assertEquals(1L, ex.timestampDivisor)
+
+        // After the exception, internal state must be untouched — once the clock catches up,
+        // the same generator instance should produce valid ids again.
+        fakeNow.addAndGet(120_000L) // move past original prime timestamp
+        val recovered = gen.nextId()
+        assertTrue(recovered > 0L)
     }
 
     @Test
