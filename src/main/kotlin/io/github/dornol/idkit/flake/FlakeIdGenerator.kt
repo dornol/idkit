@@ -36,8 +36,8 @@ open class FlakeIdGenerator(
     val workerIdBits: Int = 5,
     val timestampDivisor: Long = 1L,
     val epochStart: Instant = Instant.EPOCH,
-    val datacenterId: Long,
-    val workerId: Long,
+    val datacenterId: Int,
+    val workerId: Int,
 ) : IdGenerator<Long> {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -47,8 +47,8 @@ open class FlakeIdGenerator(
     }
 
     /** worker/datacenter 최대 값 */
-    val maxWorkerId: Long = (1L shl workerIdBits) - 1
-    val maxDatacenterId: Long = (1L shl datacenterIdBits) - 1
+    val maxWorkerId: Int = (1 shl workerIdBits) - 1
+    val maxDatacenterId: Int = (1 shl datacenterIdBits) - 1
 
     /** epoch 기준 ms 값 (delta 계산 시 raw millis 로 사용). */
     private val epochStartMillis: Long = epochStart.toEpochMilli()
@@ -77,7 +77,10 @@ open class FlakeIdGenerator(
         require(datacenterIdBits in 1..5) {
             "datacenterIdBits must be between 1 and 5 (max 32 datacenters), but was $datacenterIdBits"
         }
-        require(workerIdBits > 0) { "workerIdBits must be greater than 0, but was $workerIdBits" }
+        // Upper bound 31: (1 shl workerIdBits) must fit in positive Int range.
+        require(workerIdBits in 1..31) {
+            "workerIdBits must be between 1 and 31, but was $workerIdBits"
+        }
 
         val totalBits = UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits
         require(totalBits <= 63) {
@@ -157,8 +160,8 @@ open class FlakeIdGenerator(
         sequenceCounter = nextSequence
 
         return (timestamp shl timestampLeftShift) or
-                (datacenterId shl datacenterIdLeftShift) or
-                (workerId shl workerIdLeftShift) or
+                (datacenterId.toLong() shl datacenterIdLeftShift) or
+                (workerId.toLong() shl workerIdLeftShift) or
                 nextSequence
     }
 

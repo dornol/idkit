@@ -16,8 +16,8 @@ class SnowflakeIdGeneratorTest {
     private val workerIdBits = 5
     private val datacenterIdBits = 5
     private val sequenceBits = 12
-    private val maxWorkerId = (1L shl workerIdBits) - 1
-    private val maxDatacenterId = (1L shl datacenterIdBits) - 1
+    private val maxWorkerId = (1 shl workerIdBits) - 1
+    private val maxDatacenterId = (1 shl datacenterIdBits) - 1
     private val timestampLeftShift = datacenterIdBits + workerIdBits + sequenceBits
     private val datacenterIdLeftShift = workerIdBits + sequenceBits
     private val workerIdLeftShift = sequenceBits
@@ -60,15 +60,15 @@ class SnowflakeIdGeneratorTest {
     @Test
     fun `bit fields are placed correctly`() {
         // Use non-zero worker and dc to make the fields visible
-        val workerId: Long = maxWorkerId
-        val dcId: Long = maxDatacenterId
+        val workerId: Int = maxWorkerId
+        val dcId: Int = maxDatacenterId
         val gen = SnowflakeIdGenerator(workerId, dcId)
 
         val id = gen.nextId()
 
         val sequence = id and gen.maxSequence
-        val extractedWorker = (id shr workerIdLeftShift) and gen.maxWorkerId
-        val extractedDc = (id shr datacenterIdLeftShift) and gen.maxDatacenterId
+        val extractedWorker = (id shr workerIdLeftShift).toInt() and gen.maxWorkerId
+        val extractedDc = (id shr datacenterIdLeftShift).toInt() and gen.maxDatacenterId
         val timestampPortion = id shr timestampLeftShift
 
         assertEquals(workerId, extractedWorker)

@@ -15,8 +15,8 @@ import java.time.Instant
  * @see <a href="https://github.com/twitter/snowflake/tree/snowflake-2010">Twitter Snowflake</a>
  */
 class SnowflakeIdGenerator(
-    workerId: Long,
-    datacenterId: Long,
+    workerId: Int,
+    datacenterId: Int,
     epochStart: Instant = Instant.EPOCH,
 ) : FlakeIdGenerator(
     timestampBits = 41,

@@ -86,8 +86,8 @@ class FlakeIdGeneratorTest {
                 datacenterId = 31,
                 workerId = 31,
             )
-            assertEquals((1L shl 5) - 1, gen.maxDatacenterId)
-            assertEquals((1L shl 5) - 1, gen.maxWorkerId)
+            assertEquals((1 shl 5) - 1, gen.maxDatacenterId)
+            assertEquals((1 shl 5) - 1, gen.maxWorkerId)
         }
         assertThrows<IllegalArgumentException> {
             FlakeIdGenerator(41, 5, 5, 1L, Instant.EPOCH, datacenterId = -1, workerId = 0)
@@ -145,8 +145,8 @@ class FlakeIdGeneratorTest {
         val workerIdLeftShift = cfg.sequenceBits
 
         val sequence = id and cfg.maxSequence
-        val extractedWorker = (id shr workerIdLeftShift) and cfg.maxWorkerId
-        val extractedDc = (id shr datacenterIdLeftShift) and cfg.maxDatacenterId
+        val extractedWorker = (id shr workerIdLeftShift).toInt() and cfg.maxWorkerId
+        val extractedDc = (id shr datacenterIdLeftShift).toInt() and cfg.maxDatacenterId
         val timestampPortion = id shr timestampLeftShift
 
         assertEquals(13, extractedWorker)
