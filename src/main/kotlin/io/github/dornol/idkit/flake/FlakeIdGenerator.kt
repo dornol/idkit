@@ -1,7 +1,9 @@
 package io.github.dornol.idkit.flake
 
 import io.github.dornol.idkit.IdGenerator
+import io.github.dornol.idkit.IdGeneratorListener
 import org.slf4j.LoggerFactory
+import java.time.Clock
 import java.time.Instant
 
 /**
@@ -47,6 +49,8 @@ open class FlakeIdGenerator(
     val epochStart: Instant = Instant.EPOCH,
     val datacenterId: Int,
     val workerId: Int,
+    private val clock: Clock = Clock.systemUTC(),
+    private val listener: IdGeneratorListener = IdGeneratorListener.NOOP,
 ) : IdGenerator<Long> {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -146,16 +150,14 @@ open class FlakeIdGenerator(
         var timestamp = computeSlice(currentEpochMillis())
 
         if (timestamp < lastGeneratedTimestamp) {
-            throw ClockMovedBackwardsException(
-                driftAmount = lastGeneratedTimestamp - timestamp,
-                timestampDivisor = timestampDivisor,
-            )
+            reportClockRegression(lastGeneratedTimestamp - timestamp)
         }
 
         val nextSequence: Long = if (timestamp == lastGeneratedTimestamp) {
             val candidate = (sequenceCounter + 1) and maxSequence
             if (candidate == 0L) {
                 // Sequence overflow — wait for the next slice and start from its first id.
+                listener.onSequenceOverflow()
                 timestamp = waitForNextSlice(timestamp)
                 0L
             } else {
@@ -182,12 +184,14 @@ open class FlakeIdGenerator(
     /**
      * Returns the current wall-clock epoch milliseconds.
      *
-     * Exposed as `protected open` so tests can inject a fake clock without reflection. Do
-     * not override in production code.
+     * Reads from the configured [Clock] (defaulting to `Clock.systemUTC()`). Remains
+     * `protected open` for backward compatibility with earlier test patterns that subclassed
+     * the generator and overrode this method; new code should inject a [Clock] via the
+     * constructor instead.
      *
      * @since 2.0.0
      */
-    protected open fun currentEpochMillis(): Long = System.currentTimeMillis()
+    protected open fun currentEpochMillis(): Long = clock.millis()
 
     /** Converts wall-clock millis into an epoch-relative slice in divisor units (precise). */
     private fun computeSlice(nowMillis: Long): Long =
@@ -205,13 +209,22 @@ open class FlakeIdGenerator(
         while (true) {
             val slice = computeSlice(currentEpochMillis())
             if (slice > currentSlice) return slice
-            if (slice < currentSlice) {
-                throw ClockMovedBackwardsException(
-                    driftAmount = currentSlice - slice,
-                    timestampDivisor = timestampDivisor,
-                )
-            }
+            if (slice < currentSlice) reportClockRegression(currentSlice - slice)
             Thread.onSpinWait()
         }
+    }
+
+    /**
+     * Notifies the listener and throws [ClockMovedBackwardsException]. Takes the drift in
+     * *slices* (not ms) — this is what the two call sites hold — and scales it to ms before
+     * calling the listener, so `IdGeneratorListener.onClockRegression` receives real
+     * wall-clock milliseconds regardless of [timestampDivisor].
+     */
+    private fun reportClockRegression(driftSlices: Long): Nothing {
+        listener.onClockRegression(driftSlices * timestampDivisor)
+        throw ClockMovedBackwardsException(
+            driftAmount = driftSlices,
+            timestampDivisor = timestampDivisor,
+        )
     }
 }

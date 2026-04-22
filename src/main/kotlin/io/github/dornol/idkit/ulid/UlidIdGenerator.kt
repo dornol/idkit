@@ -1,6 +1,8 @@
 package io.github.dornol.idkit.ulid
 
 import io.github.dornol.idkit.IdGenerator
+import io.github.dornol.idkit.IdGeneratorListener
+import java.time.Clock
 import java.util.concurrent.ThreadLocalRandom
 
 /**
@@ -27,7 +29,10 @@ import java.util.concurrent.ThreadLocalRandom
  * @since 2.1.0
  * @see <a href="https://github.com/ulid/spec">ULID spec</a>
  */
-open class UlidIdGenerator : IdGenerator<String> {
+open class UlidIdGenerator(
+    private val clock: Clock = Clock.systemUTC(),
+    private val listener: IdGeneratorListener = IdGeneratorListener.NOOP,
+) : IdGenerator<String> {
 
     /** Last observed timestamp in ms. `-1` means uninitialized. */
     private var lastTimestamp: Long = -1L
@@ -68,6 +73,9 @@ open class UlidIdGenerator : IdGenerator<String> {
             randomHi = seed[0] and RANDOM_HI_MASK
             randomLo = seed[1]
         } else {
+            // `now < lastTimestamp` is strict clock regression; `now == lastTimestamp` is
+            // routine same-ms reuse and not reported.
+            if (now < lastTimestamp) listener.onClockRegression(lastTimestamp - now)
             // Same ms or clock regression — keep the timestamp and bump the 80-bit value by 1.
             val newLo = randomLo + 1
             if (newLo == 0L) {
@@ -90,10 +98,12 @@ open class UlidIdGenerator : IdGenerator<String> {
     /**
      * Returns the current wall-clock epoch milliseconds.
      *
-     * Exposed as `protected open` so tests can inject a fake clock. Do not override in
-     * production code.
+     * Reads from the configured [Clock] (defaulting to `Clock.systemUTC()`). Remains
+     * `protected open` for backward compatibility with earlier test patterns that subclassed
+     * the generator and overrode this method; new code should inject a [Clock] via the
+     * constructor instead.
      */
-    protected open fun currentEpochMillis(): Long = System.currentTimeMillis()
+    protected open fun currentEpochMillis(): Long = clock.millis()
 
     /**
      * Returns a fresh 80-bit randomness as a two-element `LongArray`: `[hi, lo]`.

@@ -1,36 +1,47 @@
 package io.github.dornol.idkit.testing
 
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * A mutable clock for deterministic testing against generators that expose the
- * `currentEpochMillis()` seam ([io.github.dornol.idkit.flake.FlakeIdGenerator],
- * [io.github.dornol.idkit.ulid.UlidIdGenerator], [io.github.dornol.idkit.uuidv7.UuidV7IdGenerator]).
+ * A mutable [Clock] for deterministic testing.
+ *
+ * Extends [java.time.Clock] so it can be passed directly to any idkit generator via the
+ * `clock` constructor parameter:
+ *
+ * ```
+ * val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+ * val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clock)
+ *
+ * val id1 = gen.nextId()
+ * clock.advance(Duration.ofSeconds(5))
+ * val id2 = gen.nextId()  // timestamp portion is 5000 ms ahead of id1
+ * ```
  *
  * Thread-safe: the underlying value lives in an [AtomicLong] so concurrent calls from the
  * tested generator and the test thread do not race.
  *
- * Usage:
- * ```
- * val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
- * val gen = testSnowflakeIdGenerator(clock, workerId = 1, datacenterId = 2)
- *
- * val id1 = gen.nextId()
- * clock.advance(Duration.ofSeconds(5))
- * val id2 = gen.nextId()
- * // id2's timestamp field is 5000 ms ahead of id1's
- * ```
+ * The legacy factory functions in `TestGenerators.kt` (`testSnowflakeIdGenerator`, …) still
+ * work — they predate direct `clock` injection and subclass the generator to override
+ * `currentEpochMillis()`. New code should prefer passing `TestClock` directly to the
+ * generator constructor.
  *
  * @since 2.2.0
  */
-class TestClock(initial: Long) {
+class TestClock internal constructor(
+    private val current: AtomicLong,
+    private val zone: ZoneId,
+) : Clock() {
 
-    constructor() : this(DEFAULT_INSTANT.toEpochMilli())
+    constructor(
+        initial: Long = DEFAULT_INSTANT.toEpochMilli(),
+        zone: ZoneId = ZoneId.of("UTC"),
+    ) : this(AtomicLong(initial), zone)
+
     constructor(instant: Instant) : this(instant.toEpochMilli())
-
-    private val current = AtomicLong(initial)
 
     /** Returns the current clock value in epoch milliseconds. */
     fun now(): Long = current.get()
@@ -67,6 +78,17 @@ class TestClock(initial: Long) {
     fun regress(millis: Long) {
         current.addAndGet(-millis)
     }
+
+    // --- java.time.Clock contract -------------------------------------------------------------
+
+    override fun millis(): Long = current.get()
+
+    override fun instant(): Instant = Instant.ofEpochMilli(current.get())
+
+    override fun getZone(): ZoneId = zone
+
+    /** Returns a view with the given [zone]; shares the underlying time value. */
+    override fun withZone(zone: ZoneId): Clock = TestClock(current, zone)
 
     companion object {
         /** A neutral default that avoids accidental collisions with real-world timestamps. */

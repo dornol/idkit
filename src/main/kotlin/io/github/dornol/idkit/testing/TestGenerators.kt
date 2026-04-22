@@ -7,13 +7,18 @@ import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
 import java.time.Instant
 
 /**
- * Factory helpers that wire the `currentEpochMillis()` seam of each generator family to a
- * shared [TestClock], so tests can advance time deterministically instead of relying on the
- * wall clock.
+ * Factory helpers that wire a [TestClock] into each generator family so tests can advance
+ * time deterministically. Since 2.3.0 these just pass the [TestClock] as the `clock`
+ * constructor parameter — for clock-only scenarios you can skip the factory entirely:
  *
- * These helpers are intentionally thin — they only install the clock seam. If you need more
- * than a deterministic clock (e.g., deterministic randomness on top), use
- * [deterministicUlidIdGenerator].
+ * ```
+ * val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = TestClock())
+ * ```
+ *
+ * The factories remain for parameter-default convenience and for scenarios that layer
+ * *additional* test hooks on top of the clock — for instance [deterministicUlidIdGenerator]
+ * subclasses the generator to override `drawRandomness()` (the clock is still passed via
+ * the constructor; only the randomness seam needs a subclass).
  *
  * @since 2.2.0
  */
@@ -24,13 +29,12 @@ fun testSnowflakeIdGenerator(
     workerId: Int = 0,
     datacenterId: Int = 0,
     epochStart: Instant = Instant.EPOCH,
-): SnowflakeIdGenerator = object : SnowflakeIdGenerator(
+): SnowflakeIdGenerator = SnowflakeIdGenerator(
     workerId = workerId,
     datacenterId = datacenterId,
     epochStart = epochStart,
-) {
-    override fun currentEpochMillis(): Long = clock.now()
-}
+    clock = clock,
+)
 
 /** Fully-configurable Flake generator whose clock is driven by [clock]. */
 fun testFlakeIdGenerator(
@@ -42,7 +46,7 @@ fun testFlakeIdGenerator(
     epochStart: Instant = Instant.EPOCH,
     datacenterId: Int = 0,
     workerId: Int = 0,
-): FlakeIdGenerator = object : FlakeIdGenerator(
+): FlakeIdGenerator = FlakeIdGenerator(
     timestampBits = timestampBits,
     datacenterIdBits = datacenterIdBits,
     workerIdBits = workerIdBits,
@@ -50,15 +54,12 @@ fun testFlakeIdGenerator(
     epochStart = epochStart,
     datacenterId = datacenterId,
     workerId = workerId,
-) {
-    override fun currentEpochMillis(): Long = clock.now()
-}
+    clock = clock,
+)
 
 /** ULID generator whose clock is driven by [clock]. Randomness is still non-deterministic. */
 fun testUlidIdGenerator(clock: TestClock = TestClock()): UlidIdGenerator =
-    object : UlidIdGenerator() {
-        override fun currentEpochMillis(): Long = clock.now()
-    }
+    UlidIdGenerator(clock = clock)
 
 /**
  * ULID generator that is **byte-identically reproducible** across test runs:
@@ -70,13 +71,10 @@ fun testUlidIdGenerator(clock: TestClock = TestClock()): UlidIdGenerator =
  * Ideal for snapshot tests.
  */
 fun deterministicUlidIdGenerator(clock: TestClock = TestClock()): UlidIdGenerator =
-    object : UlidIdGenerator() {
-        override fun currentEpochMillis(): Long = clock.now()
+    object : UlidIdGenerator(clock = clock) {
         override fun drawRandomness(): LongArray = longArrayOf(0L, 0L)
     }
 
 /** UUID v7 generator whose clock is driven by [clock]. */
 fun testUuidV7IdGenerator(clock: TestClock = TestClock()): UuidV7IdGenerator =
-    object : UuidV7IdGenerator() {
-        override fun currentEpochMillis(): Long = clock.now()
-    }
+    UuidV7IdGenerator(clock = clock)

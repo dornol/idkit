@@ -1,6 +1,8 @@
 package io.github.dornol.idkit.uuidv7
 
 import io.github.dornol.idkit.IdGenerator
+import io.github.dornol.idkit.IdGeneratorListener
+import java.time.Clock
 import java.util.UUID
 import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicLong
@@ -42,7 +44,10 @@ import java.util.concurrent.atomic.AtomicLong
  *    [io.github.dornol.idkit.ulid.UlidIdGenerator]; `nextId()` is `final override` so a
  *    subclass cannot accidentally bypass the CAS-backed synchronization.
  */
-open class UuidV7IdGenerator : IdGenerator<UUID> {
+open class UuidV7IdGenerator(
+    private val clock: Clock = Clock.systemUTC(),
+    private val listener: IdGeneratorListener = IdGeneratorListener.NOOP,
+) : IdGenerator<UUID> {
 
     /**
      * Packed state `(timestamp:52bit | counter:12bit)`.
@@ -87,13 +92,14 @@ open class UuidV7IdGenerator : IdGenerator<UUID> {
     /**
      * Returns the current wall-clock epoch milliseconds.
      *
-     * Exposed as `protected open` so tests can inject a fake clock; align with the seam on
-     * [io.github.dornol.idkit.flake.FlakeIdGenerator] and [io.github.dornol.idkit.ulid.UlidIdGenerator].
-     * Do not override in production code.
+     * Reads from the configured [Clock] (defaulting to `Clock.systemUTC()`). Remains
+     * `protected open` for backward compatibility with earlier test patterns that subclassed
+     * the generator and overrode this method; new code should inject a [Clock] via the
+     * constructor instead.
      *
      * @since 2.2.0
      */
-    protected open fun currentEpochMillis(): Long = System.currentTimeMillis()
+    protected open fun currentEpochMillis(): Long = clock.millis()
 
     /**
      * Atomically advances the packed `(timestamp | counter)` state and returns the new value.
@@ -109,21 +115,29 @@ open class UuidV7IdGenerator : IdGenerator<UUID> {
 
             val newTs: Long
             val newCounter: Long
+            val counterBorrowed: Boolean
             if (now > prevTs) {
                 newTs = now
                 newCounter = 0L
+                counterBorrowed = false
             } else if (prevCounter == COUNTER_MASK) {
                 // Same ms, counter exhausted — borrow 1 ms from the clock.
                 newTs = prevTs + 1
                 newCounter = 0L
+                counterBorrowed = true
             } else {
                 // Same ms or clock regression — keep prev ts and bump the counter.
                 newTs = prevTs
                 newCounter = prevCounter + 1
+                counterBorrowed = false
             }
 
             val newState = (newTs shl COUNTER_BITS) or newCounter
             if (state.compareAndSet(prev, newState)) {
+                // Fire listeners only after CAS wins so contended retries don't double-report.
+                // `now < prevTs` is strict: same-ms re-entry is not a regression.
+                if (now < prevTs) listener.onClockRegression(prevTs - now)
+                if (counterBorrowed) listener.onCounterBorrow()
                 return newState
             }
         }

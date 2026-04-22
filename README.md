@@ -270,30 +270,83 @@ Available strategies:
 
 The pure functions (`hash`, `parseOrdinal`, `fromEnv(..., env = ...)`) take their source as an argument, so deterministic tests can exercise the exact same logic without touching the JVM's environment.
 
+## Clock injection
+
+Every time-ordered generator accepts an optional `java.time.Clock`. Inject a fake clock for deterministic tests, a `Clock.fixed(...)` for snapshot tests, or a custom clock for offset/drift scenarios — no subclassing required.
+
+```kotlin
+import io.github.dornol.idkit.flake.SnowflakeIdGenerator
+import io.github.dornol.idkit.testing.TestClock
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
+
+// Fake clock that advances on demand
+val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clock)
+val id1 = gen.nextId()
+clock.advance(Duration.ofSeconds(5))
+val id2 = gen.nextId()          // timestamp field is 5s ahead of id1
+
+// Any java.time.Clock works — TestClock is just one option
+val fixed: Clock = Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC)
+val snapshotGen = SnowflakeIdGenerator(workerId = 0, datacenterId = 0, clock = fixed)
+```
+
+The older `currentEpochMillis()` protected seam is still there for backward compatibility — existing tests that subclass the generator keep working.
+
 ## Testing
 
-The `io.github.dornol.idkit.testing` package provides a `TestClock` and matching generator factories. Tests can advance the clock deterministically instead of relying on `System.currentTimeMillis()`.
+The `io.github.dornol.idkit.testing` package provides `TestClock` (now a `java.time.Clock` subtype) and matching generator factories.
 
 ```kotlin
 import io.github.dornol.idkit.testing.TestClock
-import io.github.dornol.idkit.testing.testSnowflakeIdGenerator
 import io.github.dornol.idkit.testing.deterministicUlidIdGenerator
+import io.github.dornol.idkit.testing.testSnowflakeIdGenerator
 import java.time.Duration
 import java.time.Instant
 
-// Fake wall clock for Snowflake
+// Preferred (since 2.3.0): pass TestClock straight to the generator
 val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
 val snowflake = testSnowflakeIdGenerator(clock, workerId = 1, datacenterId = 2)
 val id1 = snowflake.nextId()
 clock.advance(Duration.ofSeconds(5))
-val id2 = snowflake.nextId() // timestamp portion is 5s ahead
+val id2 = snowflake.nextId()        // timestamp portion is 5s ahead
 
-// Byte-identical reproducible ULIDs across runs (deterministic clock + zero randomness seed)
+// Byte-identical reproducible ULIDs (deterministic clock + zero randomness seed)
 val ulid = deterministicUlidIdGenerator(clock)
 val snapshot = List(5) { ulid.nextId() }   // always the same 5 strings
 ```
 
 Companion factories: `testSnowflakeIdGenerator`, `testFlakeIdGenerator`, `testUlidIdGenerator`, `testUuidV7IdGenerator`, `deterministicUlidIdGenerator`.
+
+## Edge-event listener
+
+Install an optional `IdGeneratorListener` to observe rare, operationally-significant events. The default is `IdGeneratorListener.NOOP`, so generators with no listener pay zero cost.
+
+idkit intentionally does **not** take a dependency on Micrometer / OpenTelemetry / any metrics facade. Wire your own in ~5 lines:
+
+```kotlin
+import io.github.dornol.idkit.IdGeneratorListener
+import io.github.dornol.idkit.flake.SnowflakeIdGenerator
+import io.micrometer.core.instrument.MeterRegistry
+
+val listener = object : IdGeneratorListener {
+    private val regressions = meterRegistry.counter("idkit.clock.regression")
+    private val overflows   = meterRegistry.counter("idkit.sequence.overflow")
+    override fun onClockRegression(driftMillis: Long) { regressions.increment() }
+    override fun onSequenceOverflow() { overflows.increment() }
+}
+val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, listener = listener)
+```
+
+Events:
+- `onClockRegression(driftMillis)` — wall clock moved backwards. Flake/Snowflake fire this immediately before throwing `ClockMovedBackwardsException`; ULID/UUID v7 fire on strict-backwards observations (same-ms re-entry is NOT reported).
+- `onSequenceOverflow()` — Flake/Snowflake only. Sequence bits for the current timestamp slice are exhausted; the generator is busy-waiting for the next slice. Sustained firing indicates throughput > 4,096 ids/ms on a default Snowflake.
+- `onCounterBorrow()` — UUID v7 only. The 12-bit monotonic counter overflowed within one ms and the embedded timestamp was advanced 1 ms ahead of the wall clock.
+
+There is intentionally **no `onIdGenerated` callback** — it would fire millions of times per second on the hot path. Counters for "ids generated" belong at the downstream request / insert layer.
 
 ## Common interface
 

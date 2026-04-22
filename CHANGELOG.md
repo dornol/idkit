@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Minor release prep. Adds batch id generation, Jakarta Bean Validation constraints, and a JMH benchmark suite.
+Minor release prep. Adds batch id generation, Jakarta Bean Validation constraints, a JMH benchmark suite, a `java.time.Clock` seam unified across generators, and an edge-event listener interface. All changes are additive — existing callers and tests compile and run without modification.
 
 ### Added
 
@@ -19,6 +19,17 @@ Minor release prep. Adds batch id generation, Jakarta Bean Validation constraint
   - `ContentionBenchmark` — 8-thread throughput; surfaces the cost difference between `@Synchronized`, CAS, and per-thread state strategies.
   - `BulkBenchmark` — compares a `List(N) { gen.nextId() }` loop against `gen.nextIds(N)` at batch sizes 10/100/1000 for Snowflake and ULID.
   Run with `./gradlew jmh` (or `-Pjmh.includes=<pattern>` to scope). The benchmarks are excluded from the published jar.
+- **`java.time.Clock` seam** — `FlakeIdGenerator`, `SnowflakeIdGenerator`, `UuidV7IdGenerator`, and `UlidIdGenerator` each gain an optional `clock: Clock = Clock.systemUTC()` constructor parameter. New code can inject a fake or fixed clock directly instead of subclassing and overriding `currentEpochMillis()`:
+  ```kotlin
+  val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = Clock.fixed(...))
+  ```
+  The `protected open fun currentEpochMillis()` test seam is preserved for backward compatibility and now defaults to `clock.millis()`.
+- `TestClock` now extends `java.time.Clock`, so it can be passed directly to any generator's `clock` parameter. Factory functions in `io.github.dornol.idkit.testing` (`testSnowflakeIdGenerator`, `testFlakeIdGenerator`, `testUlidIdGenerator`, `testUuidV7IdGenerator`) have been simplified internally to route through the new `clock` parameter instead of subclassing — external API is unchanged.
+- **`IdGeneratorListener`** — optional callback hook for rare, operationally actionable events. Default is `IdGeneratorListener.NOOP`, so generators pay zero cost unless a listener is installed. Fires:
+  - `onClockRegression(driftMillis: Long)` — Flake/Snowflake (just before throwing `ClockMovedBackwardsException`), ULID and UUID v7 (on strict-backwards clock observations; same-ms re-entry is NOT reported).
+  - `onSequenceOverflow()` — Flake/Snowflake, when the sequence bits for the current timestamp slice are exhausted and the generator busy-waits for the next slice.
+  - `onCounterBorrow()` — UUID v7, when the 12-bit monotonic counter overflows within one ms and the embedded timestamp is advanced ahead of the wall clock.
+  There is intentionally no per-id counter — that kind of metric is better collected at the downstream request/insert layer. idkit does not take a dependency on Micrometer, OpenTelemetry, or any metrics facade; users wire their own (see README for a Micrometer example).
 
 ## [2.2.0] - 2026-04-21
 
