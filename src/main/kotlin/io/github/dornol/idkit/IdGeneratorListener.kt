@@ -14,6 +14,20 @@ package io.github.dornol.idkit
  * CAS region but still on the generating thread. Keep listener bodies to simple counter
  * increments or atomic field updates.
  *
+ * ### Exception propagation
+ *
+ * Listener methods must not throw under normal operation. If a listener does throw:
+ *  - **Flake/Snowflake on regression**: the exception replaces the
+ *    [io.github.dornol.idkit.flake.ClockMovedBackwardsException] the generator was about to
+ *    raise. Generator state is not yet mutated at this point, so the next `nextId()` call
+ *    re-evaluates the regression check normally.
+ *  - **Flake/Snowflake on sequence overflow**: fires before `waitForNextSlice`; state is not
+ *    yet mutated, so the exception propagates and the generator is unaffected.
+ *  - **ULID on regression**: fires before the randomness increment; state not mutated.
+ *  - **UUID v7 on regression / counter borrow**: the CAS has already committed when the
+ *    listener fires, so a thrown listener leaves the generator's state advanced — the caller
+ *    loses that one id but the next `nextId()` call succeeds normally.
+ *
  * ### What this does NOT report
  *
  * There is intentionally **no per-id counter** — a `nextId()` counter here would fire

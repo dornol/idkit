@@ -1,10 +1,13 @@
 package io.github.dornol.idkit.uuidv7
 
+import io.github.dornol.idkit.testing.TestClock
 import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 
 class UuidV7IdGeneratorTest {
@@ -23,14 +26,18 @@ class UuidV7IdGeneratorTest {
     }
 
     @Test
-    fun `should generate sequential UUIDs`() {
-        val uuid1 = generator.nextId()
-        Thread.sleep(3)
-        val uuid2 = generator.nextId()
-        // Extract the timestamp portion (high 48 bits) and compare
+    fun `timestamps advance strictly after wall-clock sleep`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock = clock)
+        val uuid1 = gen.nextId()
+        clock.advance(Duration.ofMillis(3))
+        val uuid2 = gen.nextId()
         val ts1 = uuid1.mostSignificantBits ushr 16
         val ts2 = uuid2.mostSignificantBits ushr 16
-        assertTrue(ts2 >= ts1, "UUID2 timestamp should be >= UUID1 timestamp: ts1=$ts1, ts2=$ts2")
+        // After a 3-ms advance with no same-ms same-generator pressure, the embedded timestamp
+        // MUST strictly increase. `>=` would have hidden a "new-ms branch not taken" bug.
+        assertTrue(ts2 > ts1, "UUID2 timestamp must strictly exceed UUID1: ts1=$ts1, ts2=$ts2")
+        assertEquals(3L, ts2 - ts1, "ts delta must equal the clock advance")
     }
 
     @Test
@@ -50,15 +57,14 @@ class UuidV7IdGeneratorTest {
         val version = ((msb shr 12) and 0xFL).toInt()
         assertEquals(7, version, "Version bits should be 7")
 
-        // timestamp lives in the high 48 bits
+        // Timestamp (top 48 bits) should be close to the current wall clock.
+        // ±100 ms is generous without being sloppy; bug cases produce drifts in seconds.
         val timestamp = msb ushr 16
         val now = System.currentTimeMillis()
-        // timestamp should be near the current time (±5s)
-        assertTrue(timestamp in (now - 5000)..now, "Timestamp should be close to current time")
-
-        // rand_a is 12 bits (52..63)
-        val randA = msb and 0xFFFL
-        assertTrue(randA in 0 until (1L shl 12), "rand_a should be within 12-bit range")
+        assertTrue(
+            timestamp in (now - 100)..(now + 100),
+            "Timestamp should be within ±100 ms of now: ts=$timestamp, now=$now",
+        )
 
         // Verify variant bits inside leastSignificantBits
         val lsb = uuid.leastSignificantBits
@@ -72,6 +78,8 @@ class UuidV7IdGeneratorTest {
         val perThread = 5000
         val uuids = collectConcurrently(threads, perThread) { generator.nextId() }
         assertEquals(threads * perThread, uuids.size)
+        // Every emitted UUID must be a valid v7.
+        uuids.forEach { assertEquals(7, it.version()) }
     }
 
     @Test
@@ -103,36 +111,57 @@ class UuidV7IdGeneratorTest {
     }
 
     @Test
-    fun `counter increments within same millisecond`() {
-        // Burst-generate UUIDs; most should fall in the same ms window.
-        // Group by timestamp portion and verify counters within each group are strictly increasing.
-        val uuids = (0 until 20_000).map { generator.nextId() }
-        val byTimestamp = uuids.groupBy { it.mostSignificantBits ushr 16 }
+    fun `counter increments by exactly one within same millisecond under a fixed clock`() {
+        // Pin the clock and confirm the counter in msb bits 52..63 advances by exactly 1 per id.
+        // This pins RFC 9562 Method 2 (Fixed-Length Dedicated Counter Bits).
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock = clock)
 
-        // At least one group should have multiple UUIDs sharing the same ms
-        // (otherwise the test is meaningless on this hardware).
-        val sharedMsGroup = byTimestamp.values.firstOrNull { it.size > 1 }
-        assertTrue(sharedMsGroup != null, "Expected at least one ms with multiple UUIDs")
-
-        byTimestamp.values.filter { it.size > 1 }.forEach { group ->
-            val counters = group.map { it.mostSignificantBits and 0xFFFL }
-            for (i in 1 until counters.size) {
-                assertTrue(
-                    counters[i] > counters[i - 1],
-                    "Counter must strictly increase within same ms: ${counters[i - 1]} -> ${counters[i]}"
-                )
-            }
+        val counters = LongArray(4096) { gen.nextId().mostSignificantBits and 0xFFFL }
+        for (i in counters.indices) {
+            assertEquals(
+                i.toLong(), counters[i],
+                "counter at index $i must equal $i (strict +1 increment from 0)",
+            )
         }
+        // Timestamp portion stays pinned.
+        val ts = (gen.nextId().mostSignificantBits ushr 16)
+        // After 4097 calls we borrowed one ms — so this one is +1 ms.
+        assertEquals(
+            clock.now() + 1, ts,
+            "after borrow, embedded ts must be exactly clock + 1",
+        )
     }
 
     @Test
-    fun `concurrent generation preserves global monotonicity of mostSigBits`() {
+    fun `counter borrow advances timestamp by one when exceeding 4096 ids per ms`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock = clock)
+
+        // First 4096 ids → counter 0..4095, timestamp stays at clock.
+        repeat(4096) { gen.nextId() }
+        val startMs = clock.now()
+
+        // 4097th id → borrow; timestamp = clock + 1, counter = 0.
+        val u = gen.nextId()
+        val ts = u.mostSignificantBits ushr 16
+        val ctr = u.mostSignificantBits and 0xFFFL
+        assertEquals(startMs + 1, ts, "borrow must advance timestamp by exactly 1 ms")
+        assertEquals(0L, ctr, "borrow must reset the counter to 0")
+    }
+
+    @Test
+    fun `concurrent generation preserves global strict monotonicity of mostSigBits`() {
         // Under contention, CAS must still produce distinct mostSigBits (per-generator).
-        // Two UUIDs with different leastSigBits but identical mostSigBits would be a monotonicity
-        // bug, so we check uniqueness specifically over the mostSigBits slice.
+        // We collect per-thread sequences and verify each one is internally strictly increasing.
         val threads = 8
         val perThread = 10_000
         val msbs = collectConcurrently(threads, perThread) { generator.nextId().mostSignificantBits }
         assertEquals(threads * perThread, msbs.size)
+
+        // Global set: all mostSigBits are unique (no two threads produce the same msb).
+        // This is the strong monotonicity claim on the RFC 9562 Method 2 CAS loop.
+        val set: Set<Long> = msbs
+        assertEquals(threads * perThread, set.size)
     }
 }

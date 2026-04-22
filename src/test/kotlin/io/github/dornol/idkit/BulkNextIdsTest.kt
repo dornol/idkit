@@ -1,15 +1,20 @@
 package io.github.dornol.idkit
 
+import io.github.dornol.idkit.flake.ClockMovedBackwardsException
 import io.github.dornol.idkit.flake.FlakeIdGenerator
+import io.github.dornol.idkit.flake.FlakeIdParser
 import io.github.dornol.idkit.flake.SnowflakeIdGenerator
 import io.github.dornol.idkit.nanoid.NanoIdGenerator
+import io.github.dornol.idkit.testing.TestClock
 import io.github.dornol.idkit.ulid.UlidIdGenerator
 import io.github.dornol.idkit.ulid.UlidParser
 import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
+import io.github.dornol.idkit.uuidv7.UuidV7Parser
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.time.Duration
 import java.time.Instant
 
 class BulkNextIdsTest {
@@ -53,6 +58,26 @@ class BulkNextIdsTest {
     }
 
     @Test
+    fun `Snowflake nextIds under fixed clock produces contiguous sequence values`() {
+        // The critical semantic claim: nextIds(N) must produce the SAME sequence that N
+        // synchronous nextId() calls would produce — pinned timestamp, sequence 0..N-1.
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = SnowflakeIdGenerator(workerId = 3, datacenterId = 5, clock = clock)
+        val parser = FlakeIdParser.of(gen)
+
+        val batch = gen.nextIds(100)
+        batch.forEachIndexed { i, id ->
+            assertEquals(3, parser.workerOf(id))
+            assertEquals(5, parser.datacenterOf(id))
+            assertEquals(i.toLong(), parser.sequenceOf(id), "sequence at $i must equal $i")
+            assertEquals(
+                Instant.parse("2024-01-15T00:00:00Z"), parser.timestampOf(id),
+                "timestamp at $i must stay pinned across the batch",
+            )
+        }
+    }
+
+    @Test
     fun `Flake nextIds produces strictly increasing ids in emission order`() {
         val gen = FlakeIdGenerator(
             timestampBits = 41,
@@ -76,6 +101,20 @@ class BulkNextIdsTest {
         assertEquals(5_000, uuids.toSet().size)
         for (i in 1 until uuids.size) {
             assertTrue(uuids[i] > uuids[i - 1])
+            assertEquals(7, uuids[i].version(), "every batched UUID must be v7")
+        }
+    }
+
+    @Test
+    fun `UUID v7 nextIds under fixed clock walks the counter 0 to N-1`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock = clock)
+        val batch = gen.nextIds(512)
+        batch.forEachIndexed { i, u ->
+            // counter lives in msb bits 52..63 (the low 12 bits of mostSigBits).
+            val counter = u.mostSignificantBits and 0xFFFL
+            assertEquals(i.toLong(), counter, "counter at $i must equal $i under fixed clock")
+            assertEquals(Instant.parse("2024-01-15T00:00:00Z"), UuidV7Parser.timestampOf(u))
         }
     }
 
@@ -91,39 +130,53 @@ class BulkNextIdsTest {
     }
 
     @Test
-    fun `NanoID nextIds produces distinct ids of configured size`() {
+    fun `NanoID nextIds produces distinct alphabet-valid ids of configured size`() {
         val gen = NanoIdGenerator(size = 12)
+        val alphabet = NanoIdGenerator.DEFAULT_ALPHABET.toSet()
         val ids = gen.nextIds(2_000)
         assertEquals(2_000, ids.size)
         assertEquals(2_000, ids.toSet().size)
-        for (id in ids) assertEquals(12, id.length)
+        for (id in ids) {
+            assertEquals(12, id.length)
+            id.forEach { c -> assertTrue(c in alphabet, "illegal char '$c' in '$id'") }
+        }
     }
 
     @Test
-    fun `batch and loop produce equivalent guarantees on a timestamp-seamed Flake`() {
-        // With a fixed clock, nextId() called N times and nextIds(N) both must yield monotonic
-        // ids and neither should miss a sequence step.
-        var fakeNow = Instant.parse("2024-01-15T00:00:00Z").toEpochMilli()
-        val gen = object : FlakeIdGenerator(
-            timestampBits = 41,
-            datacenterIdBits = 5,
-            workerIdBits = 5,
-            datacenterId = 0,
-            workerId = 0,
-        ) {
-            override fun currentEpochMillis(): Long = fakeNow
-        }
+    fun `batch and loop produce the same sequence under a fixed clock (semantic equivalence)`() {
+        // Two generators of equal config + same initial clock MUST emit the same sequence of
+        // ids whether we call nextId() N times or nextIds(N) once. This pins the KDoc claim
+        // "Equivalent to calling nextId() count times".
+        val clockA = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val clockB = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val genA = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clockA)
+        val genB = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clockB)
 
-        val loopIds = List(100) { gen.nextId() }
-        // Advance into the next ms slice so the batch starts a fresh sequence.
-        fakeNow += 1
-        val batchIds = gen.nextIds(100)
+        val loopIds = List(200) { genA.nextId() }
+        val batchIds = genB.nextIds(200)
 
-        assertEquals(100, loopIds.size)
-        assertEquals(100, batchIds.size)
-        for (i in 1 until loopIds.size) assertTrue(loopIds[i] > loopIds[i - 1])
-        for (i in 1 until batchIds.size) assertTrue(batchIds[i] > batchIds[i - 1])
-        // Batch ids all > loop ids (later timestamp slice).
-        assertTrue(batchIds.first() > loopIds.last())
+        assertEquals(loopIds, batchIds, "loop and batch must yield the identical id sequence")
+    }
+
+    @Test
+    fun `nextIds propagates mid-batch ClockMovedBackwardsException and stays consistent afterwards`() {
+        // KDoc claim: "A mid-batch ClockMovedBackwardsException propagates and already-generated
+        // ids in this call are discarded; the generator stays consistent for future calls once
+        // the clock recovers."
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clock)
+
+        // Prime once at t0, then regress → the next batch must throw.
+        val primed = gen.nextId()
+        clock.regress(Duration.ofSeconds(5))
+        assertThrows(ClockMovedBackwardsException::class.java) { gen.nextIds(10) }
+
+        // Recover: advance past the original timestamp and run a batch. Must succeed and
+        // every id must be strictly greater than the primed id.
+        clock.advance(Duration.ofSeconds(10))
+        val recovered = gen.nextIds(5)
+        assertEquals(5, recovered.size)
+        recovered.forEach { assertTrue(it > primed, "recovered id $it must be > primed $primed") }
+        for (i in 1 until recovered.size) assertTrue(recovered[i] > recovered[i - 1])
     }
 }
