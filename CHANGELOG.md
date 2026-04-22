@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.3.0] - 2026-04-22
 
-Minor release prep. Adds batch id generation, Jakarta Bean Validation constraints, a JMH benchmark suite, a `java.time.Clock` seam unified across generators, and an edge-event listener interface. All changes are additive — existing callers and tests compile and run without modification.
+Minor release. Adds batch id generation, Jakarta Bean Validation constraints, a JMH benchmark suite, a `java.time.Clock` seam unified across generators, and an edge-event listener interface. All changes are additive — existing callers and tests compile and run without modification.
 
 ### Added
 
@@ -159,6 +159,7 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[2.3.0]: https://github.com/dornol/idkit/releases/tag/2.3.0
 [2.2.0]: https://github.com/dornol/idkit/releases/tag/2.2.0
 [2.1.0]: https://github.com/dornol/idkit/releases/tag/2.1.0
 [2.0.1]: https://github.com/dornol/idkit/releases/tag/2.0.1
