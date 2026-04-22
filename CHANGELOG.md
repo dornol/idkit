@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Minor release prep. Adds batch id generation, Jakarta Bean Validation constraints, and a JMH benchmark suite.
+
+### Added
+
+- `IdGenerator.nextIds(count: Int): List<T>` — default interface method that generates `count` ids in one call. `FlakeIdGenerator` and `UlidIdGenerator` override it so their `@Synchronized` monitor is acquired once for the whole batch rather than once per id, which is measurably cheaper under contention for pre-allocation workloads (bulk SQL inserts, etc.). `UuidV7IdGenerator` and `NanoIdGenerator` use the default loop because their internal strategies (CAS, per-thread `SecureRandom`) are not lock-based and get no benefit from batching the sync region.
+- `io.github.dornol.idkit.validation` — Jakarta Bean Validation constraints for ULID and UUID v7. `@ValidUlid` accepts `String`/`CharSequence` and delegates to `UlidParser.isValid`. `@ValidUuidV7` applies to both `java.util.UUID` and textual UUID strings (the string form parses then checks `version() == 7`). `null` is accepted by both — compose with `@NotNull` if you need to reject it. The `jakarta.validation-api` dependency is declared `compileOnly`, so consumers who do not wire a validation engine on their classpath incur no transitive cost.
+- `UuidV7Parser.isValid(uuid: UUID)` / `isValid(text: CharSequence)` — boolean mirror of `UlidParser.isValid`, routed through by the new `@ValidUuidV7` validators so the v7 version-check lives in exactly one place.
+- JMH benchmark suite under `src/jmh/kotlin/` (wired via the `me.champeau.jmh` Gradle plugin):
+  - `GeneratorThroughputBenchmark` — single-thread `nextId()` latency across all 5 generators.
+  - `ContentionBenchmark` — 8-thread throughput; surfaces the cost difference between `@Synchronized`, CAS, and per-thread state strategies.
+  - `BulkBenchmark` — compares a `List(N) { gen.nextId() }` loop against `gen.nextIds(N)` at batch sizes 10/100/1000 for Snowflake and ULID.
+  Run with `./gradlew jmh` (or `-Pjmh.includes=<pattern>` to scope). The benchmarks are excluded from the published jar.
+
 ## [2.2.0] - 2026-04-21
 
 Minor release. Adds runtime-context `workerId` helpers, a test-clock utility suite, and a clock seam on UUID v7 so it lines up with the other generators.

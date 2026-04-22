@@ -302,8 +302,35 @@ All generators implement `IdGenerator<T>`.
 ```kotlin
 interface IdGenerator<T> {
     fun nextId(): T
+    fun nextIds(count: Int): List<T>   // since 2.3.0
 }
 ```
+
+`nextIds(count)` is useful for batch workloads (e.g., pre-allocating ids for a bulk SQL insert). For generators backed by `@Synchronized` (Snowflake/Flake/ULID), the overridden implementation holds the monitor once for the whole batch — noticeably cheaper than a `List(N) { gen.nextId() }` loop under contention. UUID v7 and NanoID fall back to the default implementation because their internal strategies (CAS, per-thread RNG) are not lock-based.
+
+```kotlin
+val ids: List<Long> = snowflakeGen.nextIds(1_000)
+```
+
+## Bean Validation (optional)
+
+`jakarta.validation-api` is declared as a `compileOnly` dependency — the annotations are available if your runtime pulls in a Jakarta Validation engine (Spring Boot, Quarkus, Hibernate Validator), otherwise they add nothing to your classpath.
+
+```kotlin
+import io.github.dornol.idkit.validation.ValidUlid
+import io.github.dornol.idkit.validation.ValidUuidV7
+import java.util.UUID
+
+data class CreateOrderRequest(
+    @field:ValidUlid val orderId: String,
+    @field:ValidUuidV7 val customerId: UUID,
+    @field:ValidUuidV7 val correlationId: String?,   // also works on textual UUIDs
+)
+```
+
+- `@ValidUlid` — checks the value is a 26-character Crockford Base32 encoded ULID.
+- `@ValidUuidV7` — checks the value is a UUID (or UUID string) with `version() == 7`.
+- `null` is accepted by both; compose with `@NotNull` if you need to reject it.
 
 ## Behavior and caveats
 
@@ -356,6 +383,24 @@ Run:
 - UUID v7 has a per-ms counter ceiling of 4096 and borrows from the clock when exceeded; sustained overload will push the embedded timestamp ahead of the wall clock.
 - ULID has a per-ms randomness budget of 2⁸⁰ (≈ 1.2 × 10²⁴), which is unreachable in practice.
 - NanoID generation cost is dominated by `SecureRandom.nextInt()`; for very high-volume workloads, profile before concluding it is a bottleneck.
+
+## Benchmarks
+
+JMH benchmarks live in `src/jmh/kotlin/` and are wired via the `me.champeau.jmh` Gradle plugin. They are not part of the published jar.
+
+```bash
+# Run all benchmarks
+./gradlew jmh
+
+# Run a single benchmark class / method
+./gradlew jmh -Pjmh.includes=GeneratorThroughputBenchmark
+./gradlew jmh -Pjmh.includes=BulkBenchmark.snowflakeBatch
+```
+
+Suites:
+- `GeneratorThroughputBenchmark` — single-thread `nextId()` latency for all 5 generators.
+- `ContentionBenchmark` — 8-thread throughput; highlights the difference between `@Synchronized` (Flake/Snowflake/ULID), lock-free CAS (UUID v7), and per-thread `SecureRandom` (NanoID).
+- `BulkBenchmark` — `nextId()` loop vs `nextIds(batch)` at batch sizes 10 / 100 / 1000 for the synchronized generators.
 
 ## Logging
 

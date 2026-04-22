@@ -39,7 +39,25 @@ open class UlidIdGenerator : IdGenerator<String> {
     private var randomLo: Long = 0L
 
     @Synchronized
-    final override fun nextId(): String {
+    final override fun nextId(): String = nextIdLocked()
+
+    /**
+     * Holds the monitor once for the whole batch, trading a longer critical section for lower
+     * per-id lock overhead. Prefer [nextId] in highly contended paths and reserve this for
+     * pre-allocation workloads. Intra-ms monotonicity still holds: successive ULIDs in the
+     * batch differ by +1 in the 80-bit randomness field.
+     *
+     * @since 2.3.0
+     */
+    @Synchronized
+    final override fun nextIds(count: Int): List<String> {
+        require(count >= 0) { "count must be >= 0, but was $count" }
+        if (count == 0) return emptyList()
+        return List(count) { nextIdLocked() }
+    }
+
+    /** Caller must hold this instance's monitor (guaranteed by `@Synchronized` on wrappers). */
+    private fun nextIdLocked(): String {
         val now = currentEpochMillis()
 
         if (now > lastTimestamp) {

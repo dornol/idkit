@@ -121,7 +121,28 @@ open class FlakeIdGenerator(
      *   representable in [timestampBits].
      */
     @Synchronized
-    final override fun nextId(): Long {
+    final override fun nextId(): Long = nextIdLocked()
+
+    /**
+     * Holds the monitor once for the whole batch, trading a longer critical section for lower
+     * per-id lock overhead. Note: this *increases* wait time for concurrent callers — prefer
+     * [nextId] in highly contended paths and reserve this for pre-allocation workloads
+     * (e.g., ids for a bulk SQL insert).
+     *
+     * A mid-batch [ClockMovedBackwardsException] propagates and already-generated ids in this
+     * call are discarded; the generator stays consistent for future calls once the clock recovers.
+     *
+     * @since 2.3.0
+     */
+    @Synchronized
+    final override fun nextIds(count: Int): List<Long> {
+        require(count >= 0) { "count must be >= 0, but was $count" }
+        if (count == 0) return emptyList()
+        return List(count) { nextIdLocked() }
+    }
+
+    /** Caller must hold this instance's monitor (guaranteed by `@Synchronized` on wrappers). */
+    private fun nextIdLocked(): Long {
         var timestamp = computeSlice(currentEpochMillis())
 
         if (timestamp < lastGeneratedTimestamp) {
@@ -161,8 +182,8 @@ open class FlakeIdGenerator(
     /**
      * Returns the current wall-clock epoch milliseconds.
      *
-     * Exposed as `protected open` so tests can inject a fake clock. Do not override in
-     * production code.
+     * Exposed as `protected open` so tests can inject a fake clock without reflection. Do
+     * not override in production code.
      *
      * @since 2.0.0
      */

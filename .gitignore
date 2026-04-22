@@ -53,3 +53,6 @@ gradle-app.setting
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
 
+# bkit local session state
+.bkit/
+

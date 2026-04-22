@@ -31,4 +31,28 @@ object UuidV7Parser {
      * does not. Use [timestampOf] for strict v7 input.
      */
     fun rawTimestampOf(uuid: UUID): Long = uuid.mostSignificantBits ushr 16
+
+    /**
+     * Returns `true` iff [uuid] has `version() == 7`. Cheap guard mirror of
+     * [io.github.dornol.idkit.ulid.UlidParser.isValid] for call sites that want a boolean check
+     * instead of `require()`-based validation.
+     *
+     * @since 2.3.0
+     */
+    fun isValid(uuid: UUID): Boolean = uuid.version() == 7
+
+    /**
+     * Returns `true` iff [text] parses via [UUID.fromString] and the resulting UUID is v7.
+     * Does not throw; returns `false` on malformed input.
+     *
+     * @since 2.3.0
+     */
+    fun isValid(text: CharSequence): Boolean {
+        val parsed = try {
+            UUID.fromString(text.toString())
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        return parsed.version() == 7
+    }
 }
