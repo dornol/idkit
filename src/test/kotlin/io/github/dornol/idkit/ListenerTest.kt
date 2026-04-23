@@ -4,6 +4,7 @@ import io.github.dornol.idkit.flake.ClockMovedBackwardsException
 import io.github.dornol.idkit.flake.FlakeIdGenerator
 import io.github.dornol.idkit.flake.SnowflakeIdGenerator
 import io.github.dornol.idkit.testing.TestClock
+import io.github.dornol.idkit.testutil.RecordingListener
 import io.github.dornol.idkit.ulid.UlidIdGenerator
 import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -12,28 +13,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.Instant
-import java.util.concurrent.atomic.AtomicLong
-
-/**
- * Recording listener that counts every callback and stashes the most recent driftMillis.
- */
-private class RecordingListener : IdGeneratorListener {
-    val clockRegressions = AtomicLong(0L)
-    val sequenceOverflows = AtomicLong(0L)
-    val counterBorrows = AtomicLong(0L)
-    @Volatile var lastDriftMillis: Long = -1L
-
-    override fun onClockRegression(driftMillis: Long) {
-        clockRegressions.incrementAndGet()
-        lastDriftMillis = driftMillis
-    }
-    override fun onSequenceOverflow() {
-        sequenceOverflows.incrementAndGet()
-    }
-    override fun onCounterBorrow() {
-        counterBorrows.incrementAndGet()
-    }
-}
 
 class ListenerTest {
 

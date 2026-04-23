@@ -1,7 +1,8 @@
 package io.github.dornol.idkit.flake
 
-import io.github.dornol.idkit.IdGeneratorListener
 import io.github.dornol.idkit.testing.TestClock
+import io.github.dornol.idkit.testing.testFlakeIdGenerator
+import io.github.dornol.idkit.testutil.RecordingListener
 import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -291,23 +292,8 @@ class FlakeIdGeneratorTest {
     @Test
     fun `default tolerance absorbs regressions up to 10 ms and keeps ids strictly increasing`() {
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
-        val regressions = AtomicLong(0L)
-        val lastDrift = AtomicLong(-1L)
-        val listener = object : IdGeneratorListener {
-            override fun onClockRegression(driftMillis: Long) {
-                regressions.incrementAndGet()
-                lastDrift.set(driftMillis)
-            }
-        }
-        val gen = FlakeIdGenerator(
-            timestampBits = 41,
-            datacenterIdBits = 5,
-            workerIdBits = 5,
-            datacenterId = 0,
-            workerId = 0,
-            clock = clock,
-            listener = listener,
-        )
+        val listener = RecordingListener()
+        val gen = testFlakeIdGenerator(clock = clock, listener = listener)
 
         val primed = gen.nextId()
         // Regress 5 ms — well inside the 10 ms default tolerance. Must NOT throw.
@@ -318,21 +304,14 @@ class FlakeIdGeneratorTest {
             afterAbsorb > primed,
             "absorbed regression must still yield a strictly greater id: primed=$primed, after=$afterAbsorb",
         )
-        assertEquals(1L, regressions.get(), "listener must observe the absorbed regression")
-        assertEquals(5L, lastDrift.get(), "drift reported in ms must match the clock regression")
+        assertEquals(1L, listener.clockRegressions.get(), "listener must observe the absorbed regression")
+        assertEquals(5L, listener.lastDriftMillis, "drift reported in ms must match the clock regression")
     }
 
     @Test
     fun `default tolerance throws when regression exceeds 10 ms`() {
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
-        val gen = FlakeIdGenerator(
-            timestampBits = 41,
-            datacenterIdBits = 5,
-            workerIdBits = 5,
-            datacenterId = 0,
-            workerId = 0,
-            clock = clock,
-        )
+        val gen = testFlakeIdGenerator(clock = clock)
         gen.nextId()
 
         // 11 ms — one past the default tolerance. Must throw.
@@ -344,15 +323,7 @@ class FlakeIdGeneratorTest {
     @Test
     fun `explicit tolerance of ZERO preserves strict fail-fast on any backwards movement`() {
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
-        val gen = FlakeIdGenerator(
-            timestampBits = 41,
-            datacenterIdBits = 5,
-            workerIdBits = 5,
-            datacenterId = 0,
-            workerId = 0,
-            clockRegressionTolerance = Duration.ZERO,
-            clock = clock,
-        )
+        val gen = testFlakeIdGenerator(clock = clock, clockRegressionTolerance = Duration.ZERO)
         gen.nextId()
 
         // Even a single-ms regression must throw under strict mode.
@@ -364,14 +335,9 @@ class FlakeIdGeneratorTest {
     @Test
     fun `larger explicit tolerance absorbs correspondingly larger regressions`() {
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
-        val gen = FlakeIdGenerator(
-            timestampBits = 41,
-            datacenterIdBits = 5,
-            workerIdBits = 5,
-            datacenterId = 0,
-            workerId = 0,
-            clockRegressionTolerance = Duration.ofMillis(100),
+        val gen = testFlakeIdGenerator(
             clock = clock,
+            clockRegressionTolerance = Duration.ofMillis(100),
         )
         gen.nextId()
 
@@ -389,14 +355,10 @@ class FlakeIdGeneratorTest {
         // forces a sequence overflow; tolerant mode borrows one slice per overflow.
         // Tolerance = 3 ms allows 3 borrows before the 4th throws.
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
-        val gen = FlakeIdGenerator(
-            timestampBits = 50,
-            datacenterIdBits = 5,
-            workerIdBits = 5,
-            datacenterId = 0,
-            workerId = 0,
-            clockRegressionTolerance = Duration.ofMillis(3),
+        val gen = testFlakeIdGenerator(
             clock = clock,
+            timestampBits = 50,
+            clockRegressionTolerance = Duration.ofMillis(3),
         )
         assertEquals(3, gen.sequenceBits, "sequenceBits must be 3 so overflow happens every 8 ids")
 

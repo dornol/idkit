@@ -1,9 +1,11 @@
 package io.github.dornol.idkit.testing
 
+import io.github.dornol.idkit.IdGeneratorListener
 import io.github.dornol.idkit.flake.FlakeIdGenerator
 import io.github.dornol.idkit.flake.SnowflakeIdGenerator
 import io.github.dornol.idkit.ulid.UlidIdGenerator
 import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -29,11 +31,15 @@ fun testSnowflakeIdGenerator(
     workerId: Int = 0,
     datacenterId: Int = 0,
     epochStart: Instant = Instant.EPOCH,
+    clockRegressionTolerance: Duration = FlakeIdGenerator.DEFAULT_CLOCK_REGRESSION_TOLERANCE,
+    listener: IdGeneratorListener = IdGeneratorListener.NOOP,
 ): SnowflakeIdGenerator = SnowflakeIdGenerator(
     workerId = workerId,
     datacenterId = datacenterId,
     epochStart = epochStart,
+    clockRegressionTolerance = clockRegressionTolerance,
     clock = clock,
+    listener = listener,
 )
 
 /** Fully-configurable Flake generator whose clock is driven by [clock]. */
@@ -46,6 +52,8 @@ fun testFlakeIdGenerator(
     epochStart: Instant = Instant.EPOCH,
     datacenterId: Int = 0,
     workerId: Int = 0,
+    clockRegressionTolerance: Duration = FlakeIdGenerator.DEFAULT_CLOCK_REGRESSION_TOLERANCE,
+    listener: IdGeneratorListener = IdGeneratorListener.NOOP,
 ): FlakeIdGenerator = FlakeIdGenerator(
     timestampBits = timestampBits,
     datacenterIdBits = datacenterIdBits,
@@ -54,7 +62,9 @@ fun testFlakeIdGenerator(
     epochStart = epochStart,
     datacenterId = datacenterId,
     workerId = workerId,
+    clockRegressionTolerance = clockRegressionTolerance,
     clock = clock,
+    listener = listener,
 )
 
 /** ULID generator whose clock is driven by [clock]. Randomness is still non-deterministic. */

@@ -189,7 +189,6 @@ open class FlakeIdGenerator(
     private fun nextIdLocked(): Long {
         var timestamp = computeSlice(currentEpochMillis())
 
-        // Clock regression — absorb if within tolerance, throw otherwise.
         if (timestamp < lastGeneratedTimestamp) {
             val driftSlices = lastGeneratedTimestamp - timestamp
             val driftMs = driftSlices * timestampDivisor
@@ -205,7 +204,6 @@ open class FlakeIdGenerator(
         val nextSequence: Long = if (timestamp == lastGeneratedTimestamp) {
             val candidate = (sequenceCounter + 1) and maxSequence
             if (candidate == 0L) {
-                // Sequence overflow — advance to the next slice (borrow or spin-wait).
                 listener.onSequenceOverflow()
                 timestamp = advanceToNextSlice(timestamp)
                 0L
@@ -261,12 +259,13 @@ open class FlakeIdGenerator(
      *    [ClockMovedBackwardsException] is thrown instead.
      */
     private fun advanceToNextSlice(current: Long): Long {
+        // The loop only iterates in strict mode — tolerant mode always returns on the first
+        // trip (either the wall-clock moved on, or we borrow and return).
         while (true) {
             val wallSlice = computeSlice(currentEpochMillis())
             if (wallSlice > current) return wallSlice
 
             if (toleranceMillis > 0L) {
-                // Tolerant mode: borrow a slice ahead. Throws if drift exceeds tolerance.
                 val borrowed = current + 1
                 val driftSlices = borrowed - wallSlice
                 if (driftSlices * timestampDivisor > toleranceMillis) {
@@ -275,8 +274,8 @@ open class FlakeIdGenerator(
                 return borrowed
             }
 
-            // Strict mode: spin waiting for the wall clock to tick. A strict regression
-            // during the spin throws immediately rather than waiting for the clock to recover.
+            // Strict mode: a regression observed during the spin must fail fast instead of
+            // waiting out the backward jump.
             if (wallSlice < current) {
                 reportClockRegression(current - wallSlice)
             }
