@@ -6,7 +6,7 @@ plugins {
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
     id("org.jetbrains.dokka") version "1.9.20"
-    id("me.champeau.jmh") version "0.7.2"
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 group = "io.github.dornol"
