@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-04-23
+
+Major release. Reshapes how `FlakeIdGenerator` and `SnowflakeIdGenerator` respond to a backward-moving wall clock. The 2.x behaviour — throw on any single-millisecond regression — turned routine NTP slews, container pauses, and VM resume events into operator-visible errors. 3.0.0 introduces a configurable tolerance budget (10 ms by default) that absorbs those small regressions while still catching genuinely large clock steps. Applications that want the old fail-fast semantics can opt back in with one parameter.
+
+### ⚠️ Breaking Changes
+
+- **`FlakeIdGenerator` / `SnowflakeIdGenerator` clock regression handling**: by default a backwards clock movement of up to 10 ms is now *absorbed* rather than thrown. The generator pins the internal timestamp to the last-emitted value and consumes the sequence space of that pinned slice; a subsequent sequence overflow under the pinned clock borrows one slice ahead ("borrow from the future"), as long as the internal timestamp stays within the tolerance budget. Regressions beyond the budget still throw `ClockMovedBackwardsException` exactly as before.
+
+  Applications that depended on fail-fast behaviour — for instance, surfacing every backward clock tick as an operational alert — must explicitly opt in:
+
+  ```kotlin
+  // Preserve 2.x behaviour: throw on any backwards movement
+  SnowflakeIdGenerator(
+      workerId = 1,
+      datacenterId = 2,
+      clockRegressionTolerance = Duration.ZERO,
+  )
+  ```
+- **`FlakeIdGenerator` constructor parameter order**: `clockRegressionTolerance` is inserted between `workerId` and `clock`. Kotlin callers using named arguments are unaffected; positional callers must insert the new parameter.
+
+### Added
+
+- **`FlakeIdGenerator.clockRegressionTolerance: Duration`** — new constructor parameter propagated through `SnowflakeIdGenerator`. `Duration.ZERO` restores strict fail-fast; positive values define how far the internal timestamp may lead the wall clock before the generator refuses to emit another id. The default lives as `FlakeIdGenerator.DEFAULT_CLOCK_REGRESSION_TOLERANCE` (`Duration.ofMillis(10)`, `@JvmField` for Java callers).
+- **`testFlakeIdGenerator` / `testSnowflakeIdGenerator`** factory functions (in `io.github.dornol.idkit.testing`) now accept `clockRegressionTolerance` and `listener` parameters, so tests can exercise the new feature without dropping down to the full `FlakeIdGenerator` constructor.
+- **`RELEASING.md`** — release checklist for this repo: pre-release verification, the two-line tag push, post-release verification on Central, and rollback guidance.
+- **`.github/workflows/test.yml`** — CI runs `./gradlew build` on every push to `main` and every PR targeting it. Previously no test CI existed; changes were pushed straight to main.
+- **`.github/dependabot.yml`** — weekly PRs for the Gradle and github-actions ecosystems, capped at 5 open per ecosystem.
+
+### Changed
+
+- **`IdGeneratorListener.onClockRegression(driftMillis)`** now fires on *absorbed* regressions as well as thrown ones. Previously the callback was invoked only immediately before a `ClockMovedBackwardsException` throw. Listeners that only wanted to observe fatal regressions should add an `if (driftMillis > tolerance)` guard; most observability use cases want both signals.
+- **Sequence-overflow behaviour under tolerant mode**: when the sequence bits exhaust within one timestamp slice, the generator now advances the internal timestamp immediately (borrowing one slice) instead of busy-waiting for the wall clock to tick. Under strict mode (`Duration.ZERO`) the legacy `Thread.onSpinWait()` behaviour is unchanged. In practice this means the tolerant-mode generator can absorb a brief throughput burst that exceeds the sequence-per-ms ceiling, bounded by the tolerance budget.
+- **JMH benchmark generators** under `src/jmh/kotlin/` now explicitly configure `clockRegressionTolerance = Duration.ZERO` for their Flake/Snowflake instances. Without that, a 10-second measurement iteration at max throughput can exhaust the tolerance budget and trip the exception — benchmark characteristic, not a production concern.
+
+### Migration
+
+Most applications need no change: the new default is net more permissive, so 2.x code that never tripped the old fail-fast check will behave identically under 3.0.0. Three cases require action:
+
+1. **You explicitly handle `ClockMovedBackwardsException` on every clock tick** — e.g., surfacing it as a 5xx or firing an alert. Pass `Duration.ZERO` to preserve fail-fast:
+   ```kotlin
+   SnowflakeIdGenerator(workerId, datacenterId, clockRegressionTolerance = Duration.ZERO)
+   ```
+2. **You were catching the exception and retrying** — for instance, a Spring `@Retryable(value = [ClockMovedBackwardsException::class])` handler. The retry is still correct but now rarely triggers. The new default already absorbs the common case, so your retry logic becomes a safety net for large regressions only; no code change required.
+3. **You positionally construct `FlakeIdGenerator`** (not `SnowflakeIdGenerator`) — update the call to insert a `clockRegressionTolerance` argument or switch to named arguments. Most code in the wild uses named arguments already.
+
+A short write-up of the industry context that motivated this change (Twitter Snowflake, Meituan Leaf, Sonyflake, RFC 9562 UUID v7, f4b6a3 uuid-creator) lives in the Git history of commit `a7c9fac`.
+
 ## [2.3.0] - 2026-04-22
 
 Minor release. Adds batch id generation, Jakarta Bean Validation constraints, a JMH benchmark suite, a `java.time.Clock` seam unified across generators, and an edge-event listener interface. All changes are additive — existing callers and tests compile and run without modification.
@@ -159,6 +206,7 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[3.0.0]: https://github.com/dornol/idkit/releases/tag/3.0.0
 [2.3.0]: https://github.com/dornol/idkit/releases/tag/2.3.0
 [2.2.0]: https://github.com/dornol/idkit/releases/tag/2.2.0
 [2.1.0]: https://github.com/dornol/idkit/releases/tag/2.1.0

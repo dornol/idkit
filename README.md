@@ -14,10 +14,12 @@ Provided generators:
 - Language / runtime: Kotlin on JVM (JDK 11)
 - Kotlin: 2.3.10, Gradle Kotlin DSL
 - Tests: JUnit 5
-- Coordinates: `io.github.dornol:idkit:2.3.0`
+- Coordinates: `io.github.dornol:idkit:3.0.0`
 
-> **Upgrading from 1.x?** 2.0.0 contains multiple breaking changes.
-> Please read the 2.0.0 section of [CHANGELOG.md](CHANGELOG.md) first.
+> **Upgrading from 2.x?** 3.0.0 changes the default clock-regression response
+> for Snowflake/Flake (see the `[3.0.0]` section in [CHANGELOG.md](CHANGELOG.md)).
+> **Upgrading from 1.x?** 2.0.0 contains multiple breaking changes — read
+> the 2.0.0 section of [CHANGELOG.md](CHANGELOG.md) first.
 
 ## Installation
 
@@ -26,14 +28,14 @@ Fetch the artifact from Maven Central.
 Gradle (Kotlin DSL):
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:2.3.0")
+    implementation("io.github.dornol:idkit:3.0.0")
 }
 ```
 
 Gradle (Groovy):
 ```groovy
 dependencies {
-    implementation 'io.github.dornol:idkit:2.3.0'
+    implementation 'io.github.dornol:idkit:3.0.0'
 }
 ```
 
@@ -42,7 +44,7 @@ Maven:
 <dependency>
   <groupId>io.github.dornol</groupId>
   <artifactId>idkit</artifactId>
-  <version>2.3.0</version>
+  <version>3.0.0</version>
 </dependency>
 ```
 
@@ -342,8 +344,8 @@ val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, listener = listen
 ```
 
 Events:
-- `onClockRegression(driftMillis)` — wall clock moved backwards. Flake/Snowflake fire this immediately before throwing `ClockMovedBackwardsException`; ULID/UUID v7 fire on strict-backwards observations (same-ms re-entry is NOT reported).
-- `onSequenceOverflow()` — Flake/Snowflake only. Sequence bits for the current timestamp slice are exhausted; the generator is busy-waiting for the next slice. Sustained firing indicates throughput > 4,096 ids/ms on a default Snowflake.
+- `onClockRegression(driftMillis)` — wall clock moved backwards. Flake/Snowflake fire this whether the regression is absorbed under the tolerance budget or is large enough to trigger `ClockMovedBackwardsException`; ULID/UUID v7 fire on strict-backwards observations (same-ms re-entry is NOT reported). Filter by `driftMillis` if you only want fatal regressions.
+- `onSequenceOverflow()` — Flake/Snowflake only. Sequence bits for the current timestamp slice are exhausted. In strict mode (`clockRegressionTolerance = Duration.ZERO`) the generator busy-waits for the next slice; in tolerant mode (default) it borrows one slice ahead. Sustained firing indicates throughput > 4,096 ids/ms on a default Snowflake.
 - `onCounterBorrow()` — UUID v7 only. The 12-bit monotonic counter overflowed within one ms and the embedded timestamp was advanced 1 ms ahead of the wall clock.
 
 There is intentionally **no `onIdGenerated` callback** — it would fire millions of times per second on the hot path. Counters for "ids generated" belong at the downstream request / insert layer.
@@ -393,16 +395,26 @@ data class CreateOrderRequest(
 - **NanoID**: relies on a thread-safe `SecureRandom` (serialized per JDK contract).
 
 ### Clock regression (`System.currentTimeMillis()` returns a value smaller than the last observation)
-- **Snowflake / Flake**: throw `ClockMovedBackwardsException` (extends `IllegalStateException`). The internal state is not mutated before the throw, so the same instance is usable once the clock recovers.
+- **Snowflake / Flake** (since 3.0.0): absorb regressions up to `clockRegressionTolerance` (default `Duration.ofMillis(10)`) by pinning the internal timestamp to the last-emitted value. Regressions beyond the budget throw `ClockMovedBackwardsException` (extends `IllegalStateException`). The internal state is not mutated before a throw, so the same instance is usable once the clock recovers.
   ```kotlin
+  // Default: small NTP slews / container jitter are absorbed; large steps still throw.
+  val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2)
+
   try {
       val id = gen.nextId()
   } catch (e: ClockMovedBackwardsException) {
       // e.driftAmount tells you how far the clock moved back — back off and retry,
       // or alert ops.
   }
+
+  // Opt into the pre-3.0.0 fail-fast behaviour if you want every backwards tick surfaced:
+  val strict = SnowflakeIdGenerator(
+      workerId = 1,
+      datacenterId = 2,
+      clockRegressionTolerance = Duration.ZERO,
+  )
   ```
-- **UUID v7 / ULID**: keep the previously observed timestamp and increment the counter/randomness to preserve monotonicity.
+- **UUID v7 / ULID**: keep the previously observed timestamp and increment the counter/randomness to preserve monotonicity. No drift cap — these generators never throw on regression.
 
 ### Timestamp exhaustion
 The `timestampBits` field of Flake/Snowflake has a finite range. Once exceeded, `IllegalStateException` is raised, and because wall-clock time only moves forward the state is **non-recoverable**. Reconstruct the generator with a wider `timestampBits` or a more recent `epochStart`.
