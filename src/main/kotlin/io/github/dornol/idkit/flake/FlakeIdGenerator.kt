@@ -4,6 +4,7 @@ import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.IdGeneratorListener
 import org.slf4j.LoggerFactory
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -18,15 +19,25 @@ import java.time.Instant
  *
  * Use [timestampDivisor] to coarsen the timestamp resolution beyond a single millisecond.
  *
+ * ### Clock-regression model (since 3.0.0)
+ *
+ * Real-world wall clocks move backwards: NTP slews, VM pause/resume, container jitter. The
+ * generator tolerates small regressions up to [clockRegressionTolerance] by **pinning** the
+ * internal timestamp to the last emitted value and consuming the sequence space of that
+ * pinned slice. When the sequence exhausts under a pinned clock, the internal timestamp is
+ * advanced by one slice ("borrow from the future"), as long as the total lead over the wall
+ * clock stays within tolerance. If the internal timestamp would lead the wall clock by more
+ * than [clockRegressionTolerance], [ClockMovedBackwardsException] is raised. Passing
+ * `Duration.ZERO` reproduces the pre-3.0 strict behavior (any backwards movement throws).
+ *
  * ### Behavior
  *  - **Thread safety**: [nextId] is serialized via `@Synchronized`.
  *  - **Sequence overflow**: when the sequence field is exhausted within one timestamp slice,
- *    the generator busy-waits with [Thread.onSpinWait] until the next slice (bounded to at most
- *    one slice).
- *  - **Clock regression**: when [System.currentTimeMillis] returns a value less than the last
- *    observed timestamp, [ClockMovedBackwardsException] is thrown. The legacy "pin to last"
- *    strategy, combined with a sequence overflow, could busy-spin for minutes or hours waiting
- *    for the wall clock to catch up — failing fast is safer.
+ *    the generator either borrows the next slice (tolerant mode) or busy-waits with
+ *    [Thread.onSpinWait] until the wall clock advances (strict mode,
+ *    `clockRegressionTolerance == Duration.ZERO`). Both modes preserve strict id monotonicity.
+ *  - **Clock regression**: see the model section above. Before 3.0.0 the generator threw on
+ *    any backwards movement; the new default absorbs up to 10 ms.
  *  - **Timestamp exhaustion**: exceeding the range representable in [timestampBits] raises
  *    [IllegalStateException]. Because wall-clock time only moves forward, this state is
  *    **non-recoverable**; the caller must reconstruct the generator with a wider [timestampBits]
@@ -49,6 +60,24 @@ open class FlakeIdGenerator(
     val epochStart: Instant = Instant.EPOCH,
     val datacenterId: Int,
     val workerId: Int,
+    /**
+     * Maximum amount of wall-clock regression the generator will absorb before throwing.
+     *
+     *  - [Duration.ZERO]: strict fail-fast — any backwards movement of the wall clock, or any
+     *    sequence overflow that would require running ahead of the wall clock, throws
+     *    [ClockMovedBackwardsException]. This matches the pre-3.0.0 behavior.
+     *  - `Duration.ofMillis(N)` where `N > 0`: the generator's internal timestamp may lead the
+     *    wall clock by at most `N` ms. Within that budget, regressions are absorbed by pinning
+     *    to the last-emitted timestamp and sequence overflows borrow the next slice. Beyond
+     *    `N` ms of lead, [ClockMovedBackwardsException] is raised.
+     *
+     * The default of 10 ms is sized to absorb typical NTP slews and container jitter while
+     * still detecting genuinely large clock steps. Set to `Duration.ZERO` for applications
+     * where any backwards movement must be surfaced immediately.
+     *
+     * @since 3.0.0
+     */
+    val clockRegressionTolerance: Duration = DEFAULT_CLOCK_REGRESSION_TOLERANCE,
     private val clock: Clock = Clock.systemUTC(),
     private val listener: IdGeneratorListener = IdGeneratorListener.NOOP,
 ) : IdGenerator<Long> {
@@ -73,6 +102,9 @@ open class FlakeIdGenerator(
     /** Maximum value representable in the timestamp field. */
     private val maxTimestamp: Long
 
+    /** Cached tolerance in milliseconds for the hot path. */
+    private val toleranceMillis: Long
+
     /** Sequence counter within the current timestamp slice. */
     private var sequenceCounter = 0L
 
@@ -88,6 +120,9 @@ open class FlakeIdGenerator(
         require(datacenterId in 0..maxDatacenterId) {
             "datacenterId must be between 0 and $maxDatacenterId, but was $datacenterId"
         }
+        require(!clockRegressionTolerance.isNegative) {
+            "clockRegressionTolerance must be >= 0, but was $clockRegressionTolerance"
+        }
 
         val totalBits = UNUSED_BITS + timestampBits + datacenterIdBits + workerIdBits
         sequenceBits = 64 - totalBits
@@ -98,11 +133,12 @@ open class FlakeIdGenerator(
         workerIdLeftShift = sequenceBits
 
         maxTimestamp = (1L shl timestampBits) - 1
+        toleranceMillis = clockRegressionTolerance.toMillis()
 
         if (log.isDebugEnabled) {
             log.debug(
-                "Initialized FlakeIdGenerator: timestampBits={}, workerIdBits={}, sequenceBits={}, maxSequence={}",
-                timestampBits, workerIdBits, sequenceBits, maxSequence
+                "Initialized FlakeIdGenerator: timestampBits={}, workerIdBits={}, sequenceBits={}, maxSequence={}, clockRegressionTolerance={}ms",
+                timestampBits, workerIdBits, sequenceBits, maxSequence, toleranceMillis
             )
         }
     }
@@ -111,16 +147,20 @@ open class FlakeIdGenerator(
      * Generates the next id (synchronized).
      *
      *  - Increments the sequence when the timestamp slice equals the previous one.
-     *  - Waits for the next time slice when the sequence would overflow.
-     *  - Throws [ClockMovedBackwardsException] if clock regression is observed.
+     *  - Absorbs backward clock movement up to [clockRegressionTolerance] by pinning to the
+     *    last-emitted timestamp.
+     *  - On sequence overflow, advances to the next slice (either by waiting for the wall
+     *    clock in strict mode, or by borrowing one slice ahead in tolerant mode).
+     *  - Throws [ClockMovedBackwardsException] when the observed regression exceeds
+     *    [clockRegressionTolerance], or when a borrow under tolerant mode would push the
+     *    internal timestamp more than that many milliseconds ahead of the wall clock.
      *
      * All validation runs **before** any internal state is mutated, so a thrown exception leaves
      * the generator instance uncorrupted and re-callable. The only exception is
      * [IllegalStateException] on timestamp overflow: because wall-clock time only moves forward,
      * that state is effectively non-recoverable on the same instance.
      *
-     * @throws ClockMovedBackwardsException if the system clock returned a value smaller than the
-     *   previously observed timestamp.
+     * @throws ClockMovedBackwardsException if the drift exceeds [clockRegressionTolerance].
      * @throws IllegalStateException if the timestamp delta would exceed the maximum value
      *   representable in [timestampBits].
      */
@@ -149,16 +189,25 @@ open class FlakeIdGenerator(
     private fun nextIdLocked(): Long {
         var timestamp = computeSlice(currentEpochMillis())
 
+        // Clock regression — absorb if within tolerance, throw otherwise.
         if (timestamp < lastGeneratedTimestamp) {
-            reportClockRegression(lastGeneratedTimestamp - timestamp)
+            val driftSlices = lastGeneratedTimestamp - timestamp
+            val driftMs = driftSlices * timestampDivisor
+            if (driftMs > toleranceMillis) {
+                reportClockRegression(driftSlices)
+            }
+            // Absorb: notify observers, then pin to last-emitted so the sequence-advance path
+            // below treats this as a same-slice re-entry.
+            listener.onClockRegression(driftMs)
+            timestamp = lastGeneratedTimestamp
         }
 
         val nextSequence: Long = if (timestamp == lastGeneratedTimestamp) {
             val candidate = (sequenceCounter + 1) and maxSequence
             if (candidate == 0L) {
-                // Sequence overflow — wait for the next slice and start from its first id.
+                // Sequence overflow — advance to the next slice (borrow or spin-wait).
                 listener.onSequenceOverflow()
-                timestamp = waitForNextSlice(timestamp)
+                timestamp = advanceToNextSlice(timestamp)
                 0L
             } else {
                 candidate
@@ -198,25 +247,46 @@ open class FlakeIdGenerator(
         (nowMillis - epochStartMillis) / timestampDivisor
 
     /**
-     * Busy-spins until the slice strictly exceeds `currentSlice`, then returns the new slice.
+     * Advances the pinned slice to the next one, returning the new slice value.
      *
-     * If the wall clock is observed to regress below `currentSlice` during the spin, throws
-     * [ClockMovedBackwardsException] instead of waiting for the clock to catch back up — which
-     * could otherwise block the caller for the duration of the backward jump (potentially
-     * minutes or hours under a bad NTP correction).
+     * Strict mode ([clockRegressionTolerance] is `Duration.ZERO`):
+     *  - Busy-spins with [Thread.onSpinWait] until the wall clock's slice strictly exceeds
+     *    `current`, throwing [ClockMovedBackwardsException] if the wall clock regresses during
+     *    the spin (so a backwards jump never stalls the caller).
+     *
+     * Tolerant mode ([clockRegressionTolerance] is positive):
+     *  - Borrows immediately: returns `current + 1` without waiting for the wall clock to tick.
+     *    The caller's internal timestamp therefore leads the wall clock, bounded by the
+     *    tolerance. If the resulting lead would exceed [clockRegressionTolerance],
+     *    [ClockMovedBackwardsException] is thrown instead.
      */
-    private fun waitForNextSlice(currentSlice: Long): Long {
+    private fun advanceToNextSlice(current: Long): Long {
         while (true) {
-            val slice = computeSlice(currentEpochMillis())
-            if (slice > currentSlice) return slice
-            if (slice < currentSlice) reportClockRegression(currentSlice - slice)
+            val wallSlice = computeSlice(currentEpochMillis())
+            if (wallSlice > current) return wallSlice
+
+            if (toleranceMillis > 0L) {
+                // Tolerant mode: borrow a slice ahead. Throws if drift exceeds tolerance.
+                val borrowed = current + 1
+                val driftSlices = borrowed - wallSlice
+                if (driftSlices * timestampDivisor > toleranceMillis) {
+                    reportClockRegression(driftSlices)
+                }
+                return borrowed
+            }
+
+            // Strict mode: spin waiting for the wall clock to tick. A strict regression
+            // during the spin throws immediately rather than waiting for the clock to recover.
+            if (wallSlice < current) {
+                reportClockRegression(current - wallSlice)
+            }
             Thread.onSpinWait()
         }
     }
 
     /**
      * Notifies the listener and throws [ClockMovedBackwardsException]. Takes the drift in
-     * *slices* (not ms) — this is what the two call sites hold — and scales it to ms before
+     * *slices* (not ms) — this is what the call sites hold — and scales it to ms before
      * calling the listener, so `IdGeneratorListener.onClockRegression` receives real
      * wall-clock milliseconds regardless of [timestampDivisor].
      */
@@ -226,5 +296,17 @@ open class FlakeIdGenerator(
             driftAmount = driftSlices,
             timestampDivisor = timestampDivisor,
         )
+    }
+
+    companion object {
+        /**
+         * Default tolerance of 10 ms. Chosen to absorb typical NTP slews and container
+         * jitter while still detecting genuinely large clock steps. Callers that require
+         * strict fail-fast behavior can pass [Duration.ZERO] instead.
+         *
+         * @since 3.0.0
+         */
+        @JvmField
+        val DEFAULT_CLOCK_REGRESSION_TOLERANCE: Duration = Duration.ofMillis(10)
     }
 }

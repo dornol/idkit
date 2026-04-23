@@ -57,8 +57,8 @@ NanoID deliberately has no parser: it is pure random and carries no recoverable 
 
 ### Key Design Decisions
 
-- Clock regression handling: Flake/Snowflake throw `ClockMovedBackwardsException`; UUID v7 and ULID hold the previously observed timestamp and increment their internal counter/randomness to preserve monotonicity.
-- Sequence overflow in Flake/Snowflake triggers a bounded busy-spin (`Thread.onSpinWait()`) until the next time slice.
+- Clock regression handling (Flake/Snowflake, since 3.0.0): configurable via `clockRegressionTolerance: Duration` (default 10 ms). Within tolerance the generator pins the internal timestamp to the last-emitted value and absorbs the regression; sequence overflow under a pinned clock borrows one slice ahead. Beyond tolerance — or on any backward movement when tolerance is `Duration.ZERO` — `ClockMovedBackwardsException` is thrown. UUID v7 and ULID hold the previously observed timestamp and increment their internal counter/randomness to preserve monotonicity (no drift cap).
+- Sequence overflow in Flake/Snowflake: in strict mode (`clockRegressionTolerance = ZERO`) the generator busy-spins (`Thread.onSpinWait()`) until the next time slice. In tolerant mode (default) it immediately advances the internal timestamp one slice, bounded by the remaining tolerance budget.
 - UUID v7 uses RFC 9562 §6.2 Method 2: the 12-bit `rand_a` field is a monotonic counter packed with the timestamp into a single `AtomicLong`, updated via CAS.
 - ULID follows the spec's monotonic profile: within the same ms the 80-bit randomness is incremented by 1, so the emitted 26-char strings compare lexicographically in generation order.
 

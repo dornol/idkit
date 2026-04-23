@@ -115,9 +115,10 @@ class SnowflakeIdGeneratorTest {
     }
 
     @Test
-    fun `throws ClockMovedBackwardsException when the clock regresses`() {
+    fun `throws ClockMovedBackwardsException when regression exceeds default tolerance`() {
         // The regression contract is inherited from FlakeIdGenerator, but Snowflake is the
         // public surface most users actually instantiate — so pin the behaviour here too.
+        // 5 s >> 10 ms default tolerance, so the tolerant-mode default still throws.
         val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
         val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clock)
         val primed = gen.nextId()
@@ -130,6 +131,21 @@ class SnowflakeIdGeneratorTest {
         clock.advance(Duration.ofSeconds(10))
         val recovered = gen.nextId()
         assertTrue(recovered > primed)
+    }
+
+    @Test
+    fun `default tolerance absorbs a small regression typical of NTP slews`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = SnowflakeIdGenerator(workerId = 1, datacenterId = 2, clock = clock)
+        val primed = gen.nextId()
+
+        // 5 ms regression — the NTP-slew ballpark this default is sized for.
+        clock.regress(5L)
+        val afterAbsorb = gen.nextId()
+        assertTrue(
+            afterAbsorb > primed,
+            "absorbed regression must still yield a strictly greater id: primed=$primed, after=$afterAbsorb",
+        )
     }
 
     @Test

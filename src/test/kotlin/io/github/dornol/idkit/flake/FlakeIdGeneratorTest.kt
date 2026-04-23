@@ -1,10 +1,12 @@
 package io.github.dornol.idkit.flake
 
+import io.github.dornol.idkit.IdGeneratorListener
 import io.github.dornol.idkit.testing.TestClock
 import io.github.dornol.idkit.testutil.collectConcurrently
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -245,7 +247,10 @@ class FlakeIdGeneratorTest {
     }
 
     @Test
-    fun `throws ClockMovedBackwardsException with descriptive state when clock regresses`() {
+    fun `regression exceeding tolerance still throws with descriptive state`() {
+        // 1 minute of regression is far above any plausible tolerance, so this covers both
+        // strict mode and the default tolerant mode. driftAmount is expressed in the same
+        // timestamp-unit semantics regardless of mode.
         val fakeNow = AtomicLong(System.currentTimeMillis())
         val gen = object : FlakeIdGenerator(
             timestampBits = 41,
@@ -262,7 +267,7 @@ class FlakeIdGeneratorTest {
         // prime the generator so `lastGeneratedTimestamp` is populated
         val primed = gen.nextId()
 
-        // Simulate clock moving backwards by 1 minute
+        // Simulate clock moving backwards by 1 minute — far beyond the 10 ms default tolerance.
         fakeNow.addAndGet(-60_000L)
 
         val ex = assertThrows<ClockMovedBackwardsException> { gen.nextId() }
@@ -281,6 +286,151 @@ class FlakeIdGeneratorTest {
             recovered > primed,
             "recovered id must be > primed id (generator state intact): primed=$primed, recovered=$recovered",
         )
+    }
+
+    @Test
+    fun `default tolerance absorbs regressions up to 10 ms and keeps ids strictly increasing`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val regressions = AtomicLong(0L)
+        val lastDrift = AtomicLong(-1L)
+        val listener = object : IdGeneratorListener {
+            override fun onClockRegression(driftMillis: Long) {
+                regressions.incrementAndGet()
+                lastDrift.set(driftMillis)
+            }
+        }
+        val gen = FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            datacenterId = 0,
+            workerId = 0,
+            clock = clock,
+            listener = listener,
+        )
+
+        val primed = gen.nextId()
+        // Regress 5 ms — well inside the 10 ms default tolerance. Must NOT throw.
+        clock.regress(5L)
+        val afterAbsorb = gen.nextId()
+
+        assertTrue(
+            afterAbsorb > primed,
+            "absorbed regression must still yield a strictly greater id: primed=$primed, after=$afterAbsorb",
+        )
+        assertEquals(1L, regressions.get(), "listener must observe the absorbed regression")
+        assertEquals(5L, lastDrift.get(), "drift reported in ms must match the clock regression")
+    }
+
+    @Test
+    fun `default tolerance throws when regression exceeds 10 ms`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            datacenterId = 0,
+            workerId = 0,
+            clock = clock,
+        )
+        gen.nextId()
+
+        // 11 ms — one past the default tolerance. Must throw.
+        clock.regress(11L)
+        val ex = assertThrows<ClockMovedBackwardsException> { gen.nextId() }
+        assertEquals(11L, ex.driftAmount)
+    }
+
+    @Test
+    fun `explicit tolerance of ZERO preserves strict fail-fast on any backwards movement`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            datacenterId = 0,
+            workerId = 0,
+            clockRegressionTolerance = Duration.ZERO,
+            clock = clock,
+        )
+        gen.nextId()
+
+        // Even a single-ms regression must throw under strict mode.
+        clock.regress(1L)
+        val ex = assertThrows<ClockMovedBackwardsException> { gen.nextId() }
+        assertEquals(1L, ex.driftAmount)
+    }
+
+    @Test
+    fun `larger explicit tolerance absorbs correspondingly larger regressions`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            datacenterId = 0,
+            workerId = 0,
+            clockRegressionTolerance = Duration.ofMillis(100),
+            clock = clock,
+        )
+        gen.nextId()
+
+        clock.regress(80L) // inside the 100 ms tolerance
+        val absorbed = gen.nextId()
+        assertTrue(absorbed > 0)
+
+        clock.regress(100L) // accumulated drift now far beyond tolerance
+        assertThrows<ClockMovedBackwardsException> { gen.nextId() }
+    }
+
+    @Test
+    fun `sequence borrow under pinned clock stays monotonic until tolerance is exhausted`() {
+        // sequenceBits = 3 → 8 ids per slice. With TestClock held fixed, every 8th call
+        // forces a sequence overflow; tolerant mode borrows one slice per overflow.
+        // Tolerance = 3 ms allows 3 borrows before the 4th throws.
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = FlakeIdGenerator(
+            timestampBits = 50,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            datacenterId = 0,
+            workerId = 0,
+            clockRegressionTolerance = Duration.ofMillis(3),
+            clock = clock,
+        )
+        assertEquals(3, gen.sequenceBits, "sequenceBits must be 3 so overflow happens every 8 ids")
+
+        // 8 ids: fills sequence 0..7 at slice T.
+        val ids = mutableListOf<Long>()
+        repeat(8) { ids += gen.nextId() }
+        // Next 3 ids borrow slices T+1, T+2, T+3 — each uses only seq=0 then we immediately
+        // call again within the same wall-clock ms to re-enter the borrow path.
+        repeat(3) {
+            // Fill the borrowed slice (8 ids) so the next call needs another borrow.
+            ids += gen.nextId() // seq=0 at the newly borrowed slice
+            repeat(7) { ids += gen.nextId() } // seq 1..7 at the same borrowed slice
+        }
+        // Monotonicity must hold across every borrow.
+        for (i in 1 until ids.size) {
+            assertTrue(ids[i] > ids[i - 1], "ids must strictly increase across borrows: i=$i, prev=${ids[i - 1]}, cur=${ids[i]}")
+        }
+
+        // The 4th borrow would advance the internal timestamp to T+4, drift = 4 ms > tolerance.
+        assertThrows<ClockMovedBackwardsException> { gen.nextId() }
+    }
+
+    @Test
+    fun `constructor rejects negative clockRegressionTolerance`() {
+        assertThrows<IllegalArgumentException> {
+            FlakeIdGenerator(
+                timestampBits = 41,
+                datacenterIdBits = 5,
+                workerIdBits = 5,
+                datacenterId = 0,
+                workerId = 0,
+                clockRegressionTolerance = Duration.ofMillis(-1),
+            )
+        }
     }
 
     @Test
@@ -314,14 +464,15 @@ class FlakeIdGeneratorTest {
     }
 
     @Test
-    fun `waitForNextSlice throws ClockMovedBackwardsException when clock regresses during busy-spin`() {
+    fun `strict mode waitForNextSlice throws ClockMovedBackwardsException when clock regresses during busy-spin`() {
         // Narrow race: nextId() passes its top-level regression check, then the sequence
-        // overflows and we enter waitForNextSlice. If the clock regresses during the spin,
-        // we must fail fast instead of waiting for the wall clock to catch up.
+        // overflows and we enter advanceToNextSlice. Under strict mode (tolerance = ZERO) a
+        // regression during the spin must fail fast instead of waiting for the wall clock to
+        // catch up.
         //
         // Configure with sequenceBits = 1 (maxSequence = 1) so overflow triggers on the 3rd
         // call. Return a stable clock for the first 3 reads (one per nextId() top), then
-        // regress on the 4th read (first iteration inside waitForNextSlice).
+        // regress on the 4th read (first iteration inside advanceToNextSlice).
         val callCount = AtomicInteger(0)
         val gen = object : FlakeIdGenerator(
             timestampBits = 52,
@@ -331,6 +482,7 @@ class FlakeIdGeneratorTest {
             epochStart = Instant.EPOCH,
             datacenterId = 1,
             workerId = 1,
+            clockRegressionTolerance = Duration.ZERO,
         ) {
             override fun currentEpochMillis(): Long {
                 return if (callCount.incrementAndGet() <= 3) 1_000_000L else 999_999L
