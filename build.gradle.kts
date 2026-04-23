@@ -30,7 +30,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // compileOnly above is not on the test runtime classpath, so re-declare for tests.
     testImplementation(jakartaValidationApi)
-    testImplementation("org.hibernate.validator:hibernate-validator:8.0.1.Final")
+    testImplementation("org.hibernate.validator:hibernate-validator:9.1.0.Final")
     testImplementation("org.glassfish.expressly:expressly:5.0.0")
 }
 
