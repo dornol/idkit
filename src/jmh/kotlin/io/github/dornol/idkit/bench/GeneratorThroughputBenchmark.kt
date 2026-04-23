@@ -12,6 +12,7 @@ import org.openjdk.jmh.annotations.OutputTimeUnit
 import org.openjdk.jmh.annotations.Scope
 import org.openjdk.jmh.annotations.Setup
 import org.openjdk.jmh.annotations.State
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,8 +33,19 @@ open class GeneratorThroughputBenchmark {
 
     @Setup
     fun setUp() {
-        snowflake = SnowflakeIdGenerator(workerId = 1, datacenterId = 1)
-        flake = FlakeIdGenerator(datacenterId = 1, workerId = 1)
+        // Strict tolerance keeps throughput capped at the sequence ceiling via Thread.onSpinWait
+        // and makes these numbers comparable to 2.x. Tolerant mode's borrow behaviour is not
+        // what this benchmark measures.
+        snowflake = SnowflakeIdGenerator(
+            workerId = 1,
+            datacenterId = 1,
+            clockRegressionTolerance = Duration.ZERO,
+        )
+        flake = FlakeIdGenerator(
+            datacenterId = 1,
+            workerId = 1,
+            clockRegressionTolerance = Duration.ZERO,
+        )
         uuidV7 = UuidV7IdGenerator()
         ulid = UlidIdGenerator()
         nanoid = NanoIdGenerator()

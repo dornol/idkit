@@ -13,6 +13,7 @@ import org.openjdk.jmh.annotations.Scope
 import org.openjdk.jmh.annotations.Setup
 import org.openjdk.jmh.annotations.State
 import org.openjdk.jmh.annotations.Threads
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -38,8 +39,19 @@ open class ContentionBenchmark {
 
     @Setup
     fun setUp() {
-        snowflake = SnowflakeIdGenerator(workerId = 1, datacenterId = 1)
-        flake = FlakeIdGenerator(datacenterId = 1, workerId = 1)
+        // Strict tolerance: under extreme contention the tolerant-mode borrow cap would trip,
+        // which is a separate characteristic from raw monitor contention behaviour. Keep the
+        // benchmark focused on lock vs lock-free and 2.x-comparable.
+        snowflake = SnowflakeIdGenerator(
+            workerId = 1,
+            datacenterId = 1,
+            clockRegressionTolerance = Duration.ZERO,
+        )
+        flake = FlakeIdGenerator(
+            datacenterId = 1,
+            workerId = 1,
+            clockRegressionTolerance = Duration.ZERO,
+        )
         uuidV7 = UuidV7IdGenerator()
         ulid = UlidIdGenerator()
         nanoid = NanoIdGenerator()

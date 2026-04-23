@@ -10,6 +10,7 @@ import org.openjdk.jmh.annotations.Param
 import org.openjdk.jmh.annotations.Scope
 import org.openjdk.jmh.annotations.Setup
 import org.openjdk.jmh.annotations.State
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
@@ -34,7 +35,13 @@ open class BulkBenchmark {
 
     @Setup
     fun setUp() {
-        snowflake = SnowflakeIdGenerator(workerId = 1, datacenterId = 1)
+        // Strict tolerance keeps the bulk path capped at the sequence-per-ms ceiling rather
+        // than exhausting the 10 ms borrow budget under JMH-style max-throughput load.
+        snowflake = SnowflakeIdGenerator(
+            workerId = 1,
+            datacenterId = 1,
+            clockRegressionTolerance = Duration.ZERO,
+        )
         ulid = UlidIdGenerator()
     }
 
