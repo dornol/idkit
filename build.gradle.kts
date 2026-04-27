@@ -31,7 +31,7 @@ dependencies {
     // compileOnly above is not on the test runtime classpath, so re-declare for tests.
     testImplementation(jakartaValidationApi)
     testImplementation("org.hibernate.validator:hibernate-validator:8.0.1.Final")
-    testImplementation("org.glassfish.expressly:expressly:5.0.0")
+    testImplementation("org.glassfish.expressly:expressly:6.0.0")
 }
 
 tasks.test {
