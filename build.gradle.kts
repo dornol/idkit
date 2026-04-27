@@ -25,7 +25,7 @@ dependencies {
     // on the classpath; users who don't incur no extra transitive dependency.
     compileOnly(jakartaValidationApi)
     implementation(kotlin("stdlib-jdk8"))
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
+    testImplementation(platform("org.junit:junit-bom:6.0.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // compileOnly above is not on the test runtime classpath, so re-declare for tests.
