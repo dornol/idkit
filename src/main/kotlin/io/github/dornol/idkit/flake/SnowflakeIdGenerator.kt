@@ -41,4 +41,21 @@ open class SnowflakeIdGenerator(
     clockRegressionTolerance = clockRegressionTolerance,
     clock = clock,
     listener = listener,
-)
+) {
+    companion object {
+        /** Java-friendly factory for the common Snowflake configuration. */
+        @JvmStatic
+        @JvmOverloads
+        fun create(
+            workerId: Int,
+            datacenterId: Int,
+            epochStart: Instant = Instant.EPOCH,
+            clockRegressionTolerance: Duration = FlakeIdGenerator.DEFAULT_CLOCK_REGRESSION_TOLERANCE,
+        ): SnowflakeIdGenerator = SnowflakeIdGenerator(
+            workerId = workerId,
+            datacenterId = datacenterId,
+            epochStart = epochStart,
+            clockRegressionTolerance = clockRegressionTolerance,
+        )
+    }
+}

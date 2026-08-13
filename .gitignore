@@ -46,6 +46,7 @@ gradle-app.setting
 
 # Cache of project
 .gradletasknamecache
+.kotlin/
 
 # Eclipse Gradle plugin generated files
 # Eclipse Core
@@ -55,4 +56,3 @@ gradle-app.setting
 
 # bkit local session state
 .bkit/
-

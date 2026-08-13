@@ -16,6 +16,42 @@ import java.util.concurrent.atomic.AtomicLong
 class FlakeIdGeneratorTest {
 
     @Test
+    fun `timestamp arithmetic overflow fails explicitly`() {
+        val clock = TestClock(Long.MIN_VALUE)
+        val gen = FlakeIdGenerator(
+            timestampBits = 41,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            epochStart = Instant.ofEpochMilli(Long.MAX_VALUE),
+            datacenterId = 0,
+            workerId = 0,
+            clock = clock,
+        )
+
+        val ex = assertThrows<IllegalStateException> { gen.nextId() }
+        assertTrue(ex.message.orEmpty().contains("Epoch-relative timestamp"))
+    }
+
+    @Test
+    fun `timestamp field overflow fails without committing generator state`() {
+        val clock = TestClock(0L)
+        val gen = FlakeIdGenerator(
+            timestampBits = 1,
+            datacenterIdBits = 5,
+            workerIdBits = 5,
+            epochStart = Instant.EPOCH,
+            datacenterId = 0,
+            workerId = 0,
+            clock = clock,
+        )
+
+        gen.nextId() // timestamp slice 0 is valid, even though all configured fields are zero
+        clock.set(2L)
+        val ex = assertThrows<IllegalStateException> { gen.nextId() }
+        assertTrue(ex.message.orEmpty().contains("Timestamp overflow"))
+    }
+
+    @Test
     fun `constructor validates bit allocations and id ranges`() {
         // datacenterIdBits must be 1..5
         assertThrows<IllegalArgumentException> {

@@ -1,0 +1,351 @@
+public abstract interface class io/github/dornol/idkit/IdGenerator {
+	public abstract fun nextId ()Ljava/lang/Object;
+	public fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/IdGenerator$DefaultImpls {
+	public static fun nextIds (Lio/github/dornol/idkit/IdGenerator;I)Ljava/util/List;
+}
+
+public abstract interface class io/github/dornol/idkit/IdGeneratorListener {
+	public static final field Companion Lio/github/dornol/idkit/IdGeneratorListener$Companion;
+	public fun onClockRegression (J)V
+	public fun onCounterBorrow ()V
+	public fun onSequenceOverflow ()V
+}
+
+public final class io/github/dornol/idkit/IdGeneratorListener$Companion {
+	public final fun getNOOP ()Lio/github/dornol/idkit/IdGeneratorListener;
+}
+
+public final class io/github/dornol/idkit/IdGeneratorListener$DefaultImpls {
+	public static fun onClockRegression (Lio/github/dornol/idkit/IdGeneratorListener;J)V
+	public static fun onCounterBorrow (Lio/github/dornol/idkit/IdGeneratorListener;)V
+	public static fun onSequenceOverflow (Lio/github/dornol/idkit/IdGeneratorListener;)V
+}
+
+public abstract interface class io/github/dornol/idkit/IdParser {
+	public abstract fun decompose (Ljava/lang/Object;)Ljava/lang/Object;
+	public abstract fun isValid (Ljava/lang/Object;)Z
+}
+
+public final class io/github/dornol/idkit/flake/ClockMovedBackwardsException : java/lang/IllegalStateException {
+	public fun <init> (JJ)V
+	public final fun getDriftAmount ()J
+	public final fun getTimestampDivisor ()J
+}
+
+public final class io/github/dornol/idkit/flake/FlakeComponents {
+	public fun <init> (Ljava/time/Instant;IIJ)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()J
+	public final fun copy (Ljava/time/Instant;IIJ)Lio/github/dornol/idkit/flake/FlakeComponents;
+	public static synthetic fun copy$default (Lio/github/dornol/idkit/flake/FlakeComponents;Ljava/time/Instant;IIJILjava/lang/Object;)Lio/github/dornol/idkit/flake/FlakeComponents;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDatacenterId ()I
+	public final fun getSequence ()J
+	public final fun getTimestamp ()Ljava/time/Instant;
+	public final fun getWorkerId ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public class io/github/dornol/idkit/flake/FlakeIdGenerator : io/github/dornol/idkit/IdGenerator {
+	public static final field Companion Lio/github/dornol/idkit/flake/FlakeIdGenerator$Companion;
+	public static final field DEFAULT_CLOCK_REGRESSION_TOLERANCE Ljava/time/Duration;
+	public fun <init> (IIIJLjava/time/Instant;IILjava/time/Duration;Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;)V
+	public synthetic fun <init> (IIIJLjava/time/Instant;IILjava/time/Duration;Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	protected fun currentEpochMillis ()J
+	public final fun getClockRegressionTolerance ()Ljava/time/Duration;
+	public final fun getDatacenterId ()I
+	public final fun getDatacenterIdBits ()I
+	public final fun getEpochStart ()Ljava/time/Instant;
+	public final fun getMaxDatacenterId ()I
+	public final fun getMaxSequence ()J
+	public final fun getMaxWorkerId ()I
+	public final fun getSequenceBits ()I
+	public final fun getTimestampBits ()I
+	public final fun getTimestampDivisor ()J
+	public final fun getWorkerId ()I
+	public final fun getWorkerIdBits ()I
+	public final fun nextId ()Ljava/lang/Long;
+	public synthetic fun nextId ()Ljava/lang/Object;
+	public final fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/flake/FlakeIdGenerator$Companion {
+}
+
+public final class io/github/dornol/idkit/flake/FlakeIdParser {
+	public static final field Companion Lio/github/dornol/idkit/flake/FlakeIdParser$Companion;
+	public fun <init> ()V
+	public fun <init> (IIIJLjava/time/Instant;)V
+	public synthetic fun <init> (IIIJLjava/time/Instant;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun datacenterOf (J)I
+	public final fun decompose (J)Lio/github/dornol/idkit/flake/FlakeComponents;
+	public final fun getDatacenterIdBits ()I
+	public final fun getEpochStart ()Ljava/time/Instant;
+	public final fun getTimestampBits ()I
+	public final fun getTimestampDivisor ()J
+	public final fun getWorkerIdBits ()I
+	public final fun sequenceOf (J)J
+	public final fun timestampOf (J)Ljava/time/Instant;
+	public final fun workerOf (J)I
+}
+
+public final class io/github/dornol/idkit/flake/FlakeIdParser$Companion {
+	public final fun of (Lio/github/dornol/idkit/flake/FlakeIdGenerator;)Lio/github/dornol/idkit/flake/FlakeIdParser;
+}
+
+public class io/github/dornol/idkit/flake/SnowflakeIdGenerator : io/github/dornol/idkit/flake/FlakeIdGenerator {
+	public static final field Companion Lio/github/dornol/idkit/flake/SnowflakeIdGenerator$Companion;
+	public fun <init> (IILjava/time/Instant;Ljava/time/Duration;Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;)V
+	public synthetic fun <init> (IILjava/time/Instant;Ljava/time/Duration;Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public static final fun create (II)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public static final fun create (IILjava/time/Instant;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public static final fun create (IILjava/time/Instant;Ljava/time/Duration;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+}
+
+public final class io/github/dornol/idkit/flake/SnowflakeIdGenerator$Companion {
+	public final fun create (II)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public final fun create (IILjava/time/Instant;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public final fun create (IILjava/time/Instant;Ljava/time/Duration;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public static synthetic fun create$default (Lio/github/dornol/idkit/flake/SnowflakeIdGenerator$Companion;IILjava/time/Instant;Ljava/time/Duration;ILjava/lang/Object;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+}
+
+public final class io/github/dornol/idkit/nanoid/NanoIdGenerator : io/github/dornol/idkit/IdGenerator {
+	public static final field Companion Lio/github/dornol/idkit/nanoid/NanoIdGenerator$Companion;
+	public static final field DEFAULT_ALPHABET Ljava/lang/String;
+	public fun <init> ()V
+	public fun <init> (ILjava/lang/String;)V
+	public synthetic fun <init> (ILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun getAlphabet ()Ljava/lang/String;
+	public final fun getSize ()I
+	public synthetic fun nextId ()Ljava/lang/Object;
+	public fun nextId ()Ljava/lang/String;
+	public fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/nanoid/NanoIdGenerator$Companion {
+}
+
+public final class io/github/dornol/idkit/testing/TestClock : java/time/Clock {
+	public static final field Companion Lio/github/dornol/idkit/testing/TestClock$Companion;
+	public fun <init> (JLjava/time/ZoneId;)V
+	public synthetic fun <init> (JLjava/time/ZoneId;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/time/Instant;)V
+	public final fun advance (J)V
+	public final fun advance (Ljava/time/Duration;)V
+	public fun getZone ()Ljava/time/ZoneId;
+	public fun instant ()Ljava/time/Instant;
+	public fun millis ()J
+	public final fun now ()J
+	public final fun nowInstant ()Ljava/time/Instant;
+	public final fun regress (J)V
+	public final fun regress (Ljava/time/Duration;)V
+	public final fun set (J)V
+	public final fun set (Ljava/time/Instant;)V
+	public fun withZone (Ljava/time/ZoneId;)Ljava/time/Clock;
+}
+
+public final class io/github/dornol/idkit/testing/TestClock$Companion {
+	public final fun getDEFAULT_INSTANT ()Ljava/time/Instant;
+}
+
+public final class io/github/dornol/idkit/testing/TestGeneratorsKt {
+	public static final fun deterministicUlidIdGenerator (Lio/github/dornol/idkit/testing/TestClock;)Lio/github/dornol/idkit/ulid/UlidIdGenerator;
+	public static synthetic fun deterministicUlidIdGenerator$default (Lio/github/dornol/idkit/testing/TestClock;ILjava/lang/Object;)Lio/github/dornol/idkit/ulid/UlidIdGenerator;
+	public static final fun testFlakeIdGenerator (Lio/github/dornol/idkit/testing/TestClock;IIIJLjava/time/Instant;IILjava/time/Duration;Lio/github/dornol/idkit/IdGeneratorListener;)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static synthetic fun testFlakeIdGenerator$default (Lio/github/dornol/idkit/testing/TestClock;IIIJLjava/time/Instant;IILjava/time/Duration;Lio/github/dornol/idkit/IdGeneratorListener;ILjava/lang/Object;)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static final fun testSnowflakeIdGenerator (Lio/github/dornol/idkit/testing/TestClock;IILjava/time/Instant;Ljava/time/Duration;Lio/github/dornol/idkit/IdGeneratorListener;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public static synthetic fun testSnowflakeIdGenerator$default (Lio/github/dornol/idkit/testing/TestClock;IILjava/time/Instant;Ljava/time/Duration;Lio/github/dornol/idkit/IdGeneratorListener;ILjava/lang/Object;)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public static final fun testUlidIdGenerator (Lio/github/dornol/idkit/testing/TestClock;)Lio/github/dornol/idkit/ulid/UlidIdGenerator;
+	public static synthetic fun testUlidIdGenerator$default (Lio/github/dornol/idkit/testing/TestClock;ILjava/lang/Object;)Lio/github/dornol/idkit/ulid/UlidIdGenerator;
+	public static final fun testUuidV7IdGenerator (Lio/github/dornol/idkit/testing/TestClock;)Lio/github/dornol/idkit/uuidv7/UuidV7IdGenerator;
+	public static synthetic fun testUuidV7IdGenerator$default (Lio/github/dornol/idkit/testing/TestClock;ILjava/lang/Object;)Lio/github/dornol/idkit/uuidv7/UuidV7IdGenerator;
+}
+
+public class io/github/dornol/idkit/ulid/UlidIdGenerator : io/github/dornol/idkit/IdGenerator {
+	public fun <init> ()V
+	public fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;)V
+	public synthetic fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	protected fun currentEpochMillis ()J
+	protected fun drawRandomness ()[J
+	public synthetic fun nextId ()Ljava/lang/Object;
+	public final fun nextId ()Ljava/lang/String;
+	public final fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/ulid/UlidParser {
+	public static final field INSTANCE Lio/github/dornol/idkit/ulid/UlidParser;
+	public final fun fromBytes ([B)Ljava/lang/String;
+	public final fun isValid (Ljava/lang/String;)Z
+	public final fun timestampOf (Ljava/lang/String;)Ljava/time/Instant;
+	public final fun toBytes (Ljava/lang/String;)[B
+}
+
+public final class io/github/dornol/idkit/uuidv7/UuidV7Components {
+	public fun <init> (Ljava/time/Instant;JJ)V
+	public final fun component1 ()Ljava/time/Instant;
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun copy (Ljava/time/Instant;JJ)Lio/github/dornol/idkit/uuidv7/UuidV7Components;
+	public static synthetic fun copy$default (Lio/github/dornol/idkit/uuidv7/UuidV7Components;Ljava/time/Instant;JJILjava/lang/Object;)Lio/github/dornol/idkit/uuidv7/UuidV7Components;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCounter ()J
+	public final fun getRandomBits ()J
+	public final fun getTimestamp ()Ljava/time/Instant;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public class io/github/dornol/idkit/uuidv7/UuidV7IdGenerator : io/github/dornol/idkit/IdGenerator {
+	public fun <init> ()V
+	public fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;)V
+	public synthetic fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	protected fun currentEpochMillis ()J
+	public synthetic fun nextId ()Ljava/lang/Object;
+	public final fun nextId ()Ljava/util/UUID;
+	public fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/uuidv7/UuidV7Parser : io/github/dornol/idkit/IdParser {
+	public static final field INSTANCE Lio/github/dornol/idkit/uuidv7/UuidV7Parser;
+	public static final fun counterOf (Ljava/util/UUID;)J
+	public synthetic fun decompose (Ljava/lang/Object;)Ljava/lang/Object;
+	public fun decompose (Ljava/util/UUID;)Lio/github/dornol/idkit/uuidv7/UuidV7Components;
+	public static final fun isValid (Ljava/lang/CharSequence;)Z
+	public synthetic fun isValid (Ljava/lang/Object;)Z
+	public fun isValid (Ljava/util/UUID;)Z
+	public static final fun randomBitsOf (Ljava/util/UUID;)J
+	public static final fun rawTimestampOf (Ljava/util/UUID;)J
+	public static final fun timestampOf (Ljava/util/UUID;)Ljava/time/Instant;
+}
+
+public final class io/github/dornol/idkit/validation/UlidValidator : jakarta/validation/ConstraintValidator {
+	public fun <init> ()V
+	public fun isValid (Ljava/lang/CharSequence;Ljakarta/validation/ConstraintValidatorContext;)Z
+	public synthetic fun isValid (Ljava/lang/Object;Ljakarta/validation/ConstraintValidatorContext;)Z
+}
+
+public final class io/github/dornol/idkit/validation/UuidV7StringValidator : jakarta/validation/ConstraintValidator {
+	public fun <init> ()V
+	public fun isValid (Ljava/lang/CharSequence;Ljakarta/validation/ConstraintValidatorContext;)Z
+	public synthetic fun isValid (Ljava/lang/Object;Ljakarta/validation/ConstraintValidatorContext;)Z
+}
+
+public final class io/github/dornol/idkit/validation/UuidV7UuidValidator : jakarta/validation/ConstraintValidator {
+	public fun <init> ()V
+	public synthetic fun isValid (Ljava/lang/Object;Ljakarta/validation/ConstraintValidatorContext;)Z
+	public fun isValid (Ljava/util/UUID;Ljakarta/validation/ConstraintValidatorContext;)Z
+}
+
+public abstract interface annotation class io/github/dornol/idkit/validation/ValidUlid : java/lang/annotation/Annotation {
+	public abstract fun groups ()[Ljava/lang/Class;
+	public abstract fun message ()Ljava/lang/String;
+	public abstract fun payload ()[Ljava/lang/Class;
+}
+
+public abstract interface annotation class io/github/dornol/idkit/validation/ValidUuidV7 : java/lang/annotation/Annotation {
+	public abstract fun groups ()[Ljava/lang/Class;
+	public abstract fun message ()Ljava/lang/String;
+	public abstract fun payload ()[Ljava/lang/Class;
+}
+
+public abstract interface class io/github/dornol/idkit/worker/FencedOperationExecutor {
+	public abstract fun execute (Ljava/lang/String;JLkotlin/jvm/functions/Function0;)Lio/github/dornol/idkit/worker/FencedOperationResult;
+}
+
+public final class io/github/dornol/idkit/worker/FencedOperationKt {
+	public static final fun requireApplied (Lio/github/dornol/idkit/worker/FencedOperationExecutor;Ljava/lang/String;JLkotlin/jvm/functions/Function0;)V
+}
+
+public final class io/github/dornol/idkit/worker/FencedOperationResult : java/lang/Enum {
+	public static final field APPLIED Lio/github/dornol/idkit/worker/FencedOperationResult;
+	public static final field REJECTED_STALE Lio/github/dornol/idkit/worker/FencedOperationResult;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/dornol/idkit/worker/FencedOperationResult;
+	public static fun values ()[Lio/github/dornol/idkit/worker/FencedOperationResult;
+}
+
+public abstract interface class io/github/dornol/idkit/worker/FencingTokenValidator {
+	public abstract fun accept (Ljava/lang/String;J)Z
+	public abstract fun current (Ljava/lang/String;)Ljava/lang/Long;
+	public fun requireNewer (Ljava/lang/String;J)V
+}
+
+public final class io/github/dornol/idkit/worker/FencingTokenValidator$DefaultImpls {
+	public static fun requireNewer (Lio/github/dornol/idkit/worker/FencingTokenValidator;Ljava/lang/String;J)V
+}
+
+public final class io/github/dornol/idkit/worker/InMemoryFencingTokenValidator : io/github/dornol/idkit/worker/FencingTokenValidator {
+	public fun <init> ()V
+	public fun accept (Ljava/lang/String;J)Z
+	public final fun clear (Ljava/lang/String;)V
+	public fun current (Ljava/lang/String;)Ljava/lang/Long;
+	public fun requireNewer (Ljava/lang/String;J)V
+}
+
+public abstract interface class io/github/dornol/idkit/worker/LeaseClock {
+	public abstract fun millis ()J
+}
+
+public final class io/github/dornol/idkit/worker/LeasedIdGenerator : io/github/dornol/idkit/IdGenerator {
+	public fun <init> (Lio/github/dornol/idkit/IdGenerator;Lio/github/dornol/idkit/worker/WorkerIdLease;)V
+	public fun nextId ()Ljava/lang/Object;
+	public fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/worker/StaleFencingTokenException : java/lang/IllegalStateException {
+	public fun <init> (Ljava/lang/String;JLjava/lang/Long;)V
+	public final fun getCurrentToken ()Ljava/lang/Long;
+	public final fun getFencingToken ()J
+	public final fun getResource ()Ljava/lang/String;
+}
+
+public final class io/github/dornol/idkit/worker/SystemLeaseClock : io/github/dornol/idkit/worker/LeaseClock {
+	public static final field INSTANCE Lio/github/dornol/idkit/worker/SystemLeaseClock;
+	public fun millis ()J
+}
+
+public abstract interface class io/github/dornol/idkit/worker/WorkerIdLease : java/lang/AutoCloseable {
+	public abstract fun close ()V
+	public abstract fun getDatacenterId ()I
+	public fun getFencingToken ()J
+	public abstract fun getWorkerId ()I
+	public fun isValid ()Z
+}
+
+public final class io/github/dornol/idkit/worker/WorkerIdLease$DefaultImpls {
+	public static fun getFencingToken (Lio/github/dornol/idkit/worker/WorkerIdLease;)J
+	public static fun isValid (Lio/github/dornol/idkit/worker/WorkerIdLease;)Z
+}
+
+public abstract interface class io/github/dornol/idkit/worker/WorkerIdLeaseStore {
+	public abstract fun tryAcquire (IILjava/lang/String;J)Lio/github/dornol/idkit/worker/WorkerIdLease;
+}
+
+public final class io/github/dornol/idkit/worker/WorkerIdLeases {
+	public static final field INSTANCE Lio/github/dornol/idkit/worker/WorkerIdLeases;
+	public final fun acquire (Lio/github/dornol/idkit/worker/WorkerIdLeaseStore;IILjava/lang/String;J)Lio/github/dornol/idkit/worker/WorkerIdLease;
+	public static synthetic fun acquire$default (Lio/github/dornol/idkit/worker/WorkerIdLeases;Lio/github/dornol/idkit/worker/WorkerIdLeaseStore;IILjava/lang/String;JILjava/lang/Object;)Lio/github/dornol/idkit/worker/WorkerIdLease;
+}
+
+public final class io/github/dornol/idkit/worker/WorkerIdSource {
+	public static final field INSTANCE Lio/github/dornol/idkit/worker/WorkerIdSource;
+	public final fun fromEnv (Ljava/lang/String;Ljava/util/Map;)I
+	public static synthetic fun fromEnv$default (Lio/github/dornol/idkit/worker/WorkerIdSource;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)I
+	public final fun fromHostname (I)I
+	public static synthetic fun fromHostname$default (Lio/github/dornol/idkit/worker/WorkerIdSource;IILjava/lang/Object;)I
+	public final fun fromNetworkInterface (I)I
+	public static synthetic fun fromNetworkInterface$default (Lio/github/dornol/idkit/worker/WorkerIdSource;IILjava/lang/Object;)I
+	public final fun fromPodOrdinal (I)Ljava/lang/Integer;
+	public static synthetic fun fromPodOrdinal$default (Lio/github/dornol/idkit/worker/WorkerIdSource;IILjava/lang/Object;)Ljava/lang/Integer;
+	public final fun hash (Ljava/lang/String;I)I
+	public static synthetic fun hash$default (Lio/github/dornol/idkit/worker/WorkerIdSource;Ljava/lang/String;IILjava/lang/Object;)I
+	public final fun parseOrdinal (Ljava/lang/String;I)Ljava/lang/Integer;
+	public static synthetic fun parseOrdinal$default (Lio/github/dornol/idkit/worker/WorkerIdSource;Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/Integer;
+}
+

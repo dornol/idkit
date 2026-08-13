@@ -6,11 +6,32 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
 class UuidV7IdGeneratorTest {
+
+    @Test
+    fun `rejects timestamps outside the UUID v7 48-bit range`() {
+        val gen = object : UuidV7IdGenerator() {
+            override fun currentEpochMillis(): Long = 0x0001_0000_0000_0000L
+        }
+
+        val ex = assertThrows<IllegalStateException> { gen.nextId() }
+        assertTrue(ex.message.orEmpty().contains("48-bit range"))
+    }
+
+    @Test
+    fun `rejects negative UUID v7 timestamps`() {
+        val gen = object : UuidV7IdGenerator() {
+            override fun currentEpochMillis(): Long = -1L
+        }
+
+        val ex = assertThrows<IllegalStateException> { gen.nextId() }
+        assertTrue(ex.message.orEmpty().contains("cannot be negative"))
+    }
 
     private lateinit var generator: UuidV7IdGenerator
 

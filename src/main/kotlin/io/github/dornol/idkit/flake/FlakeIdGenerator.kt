@@ -190,8 +190,8 @@ open class FlakeIdGenerator(
         var timestamp = computeSlice(currentEpochMillis())
 
         if (timestamp < lastGeneratedTimestamp) {
-            val driftSlices = lastGeneratedTimestamp - timestamp
-            val driftMs = driftSlices * timestampDivisor
+            val driftSlices = sliceDistance(lastGeneratedTimestamp, timestamp)
+            val driftMs = driftMillis(driftSlices)
             if (driftMs > toleranceMillis) {
                 reportClockRegression(driftSlices)
             }
@@ -241,8 +241,15 @@ open class FlakeIdGenerator(
     protected open fun currentEpochMillis(): Long = clock.millis()
 
     /** Converts wall-clock millis into an epoch-relative slice in divisor units (precise). */
-    private fun computeSlice(nowMillis: Long): Long =
-        (nowMillis - epochStartMillis) / timestampDivisor
+    private fun computeSlice(nowMillis: Long): Long = try {
+        Math.subtractExact(nowMillis, epochStartMillis) / timestampDivisor
+    } catch (ex: ArithmeticException) {
+        throw IllegalStateException(
+            "Epoch-relative timestamp cannot be represented: now=$nowMillis, " +
+                    "epochStartMillis=$epochStartMillis",
+            ex,
+        )
+    }
 
     /**
      * Advances the pinned slice to the next one, returning the new slice value.
@@ -266,9 +273,9 @@ open class FlakeIdGenerator(
             if (wallSlice > current) return wallSlice
 
             if (toleranceMillis > 0L) {
-                val borrowed = current + 1
-                val driftSlices = borrowed - wallSlice
-                if (driftSlices * timestampDivisor > toleranceMillis) {
+                val borrowed = incrementSlice(current)
+                val driftSlices = sliceDistance(borrowed, wallSlice)
+                if (driftMillis(driftSlices) > toleranceMillis) {
                     reportClockRegression(driftSlices)
                 }
                 return borrowed
@@ -277,7 +284,7 @@ open class FlakeIdGenerator(
             // Strict mode: a regression observed during the spin must fail fast instead of
             // waiting out the backward jump.
             if (wallSlice < current) {
-                reportClockRegression(current - wallSlice)
+                reportClockRegression(sliceDistance(current, wallSlice))
             }
             Thread.onSpinWait()
         }
@@ -290,11 +297,37 @@ open class FlakeIdGenerator(
      * wall-clock milliseconds regardless of [timestampDivisor].
      */
     private fun reportClockRegression(driftSlices: Long): Nothing {
-        listener.onClockRegression(driftSlices * timestampDivisor)
+        listener.onClockRegression(driftMillis(driftSlices))
         throw ClockMovedBackwardsException(
             driftAmount = driftSlices,
             timestampDivisor = timestampDivisor,
         )
+    }
+
+    /** Converts a slice distance to milliseconds without silently wrapping Long. */
+    private fun driftMillis(driftSlices: Long): Long = try {
+        Math.multiplyExact(driftSlices, timestampDivisor)
+    } catch (ex: ArithmeticException) {
+        throw IllegalStateException(
+            "Clock drift exceeds the representable millisecond range: " +
+                    "slices=$driftSlices, divisor=$timestampDivisor",
+            ex,
+        )
+    }
+
+    private fun sliceDistance(larger: Long, smaller: Long): Long = try {
+        Math.subtractExact(larger, smaller)
+    } catch (ex: ArithmeticException) {
+        throw IllegalStateException(
+            "Timestamp slice distance cannot be represented: larger=$larger, smaller=$smaller",
+            ex,
+        )
+    }
+
+    private fun incrementSlice(current: Long): Long = try {
+        Math.addExact(current, 1L)
+    } catch (ex: ArithmeticException) {
+        throw IllegalStateException("Timestamp slice overflow at $current", ex)
     }
 
     companion object {

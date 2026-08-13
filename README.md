@@ -8,16 +8,24 @@ Provided generators:
 - **UUID v7** (`java.util.UUID`) — RFC 9562 §6.2 Method 2 implementation with intra-millisecond monotonicity.
 - **ULID** (`String`, 26 chars) — Crockford Base32 encoded, lexicographically sortable, monotonic within a millisecond.
 - **NanoID** (`String`, 21 chars by default) — compact, URL-safe, cryptographically random. Not time-ordered — fills the "opaque public id" slot.
+- **Redis worker leases** (optional `idkit-redis` module) — automatic worker ID reservation with TTL and heartbeat.
 
 ## Project info
 
-- Language / runtime: Kotlin on JVM (JDK 11)
-- Kotlin: 2.3.10, Gradle Kotlin DSL
+- Language / runtime: Kotlin on JVM (Java 11 bytecode target)
+- Build JDK: 17 or newer; CI verifies JDK 17, 21, and 25
+- Kotlin: 2.3.21, Gradle Kotlin DSL
 - Tests: JUnit 5
-- Coordinates: `io.github.dornol:idkit:3.0.0`
+- Coordinates: `io.github.dornol:idkit:3.1.0`
 
 > **Upgrading from 2.x?** 3.0.0 changes the default clock-regression response
 > for Snowflake/Flake (see the `[3.0.0]` section in [CHANGELOG.md](CHANGELOG.md)).
+
+> **Upgrading from 3.0.0?** 3.1.0 adds optional JDBC/Redis lease modules, fencing tokens, and
+> operational callbacks. Existing JDBC lease tables are upgraded automatically when initialized;
+> grant the application permission to add the `fencing_token` column. Deploy the new Redis module
+> alongside existing instances gradually, then use fencing-aware downstream operations before
+> relying on stale-worker protection.
 > **Upgrading from 1.x?** 2.0.0 contains multiple breaking changes — read
 > the 2.0.0 section of [CHANGELOG.md](CHANGELOG.md) first.
 
@@ -28,14 +36,14 @@ Fetch the artifact from Maven Central.
 Gradle (Kotlin DSL):
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.0.0")
+    implementation("io.github.dornol:idkit:3.1.0")
 }
 ```
 
 Gradle (Groovy):
 ```groovy
 dependencies {
-    implementation 'io.github.dornol:idkit:3.0.0'
+    implementation 'io.github.dornol:idkit:3.1.0'
 }
 ```
 
@@ -44,7 +52,7 @@ Maven:
 <dependency>
   <groupId>io.github.dornol</groupId>
   <artifactId>idkit</artifactId>
-  <version>3.0.0</version>
+  <version>3.1.0</version>
 </dependency>
 ```
 
@@ -61,6 +69,13 @@ Build and test locally:
 ./gradlew.bat test  # Windows
 ./gradlew test      # macOS / Linux
 ```
+
+The published library targets Java 11. Building with JDK 17 or newer is recommended;
+Kotlin 2.3.21 also supports running the build on JDK 25.
+
+Public API compatibility is checked automatically during `check` via Kotlin ABI validation.
+When an intentional public API change is made, review it and update the reference dump with
+`./gradlew updateKotlinAbi`.
 
 ## Usage
 
@@ -200,6 +215,151 @@ Monotonicity (since 2.0.0):
 ## Parsers
 
 Each time-ordered generator has a matching parser that recovers the embedded metadata — useful for log correlation, incident triage, and debugging.
+
+UUID v7 fields can be decoded together:
+
+```kotlin
+val parts = UuidV7Parser.decompose(uuid)
+parts.timestamp  // Instant
+parts.counter    // 12-bit monotonic counter
+parts.randomBits // 62-bit rand_b field
+```
+
+For Java callers, the common Snowflake configuration is also available through
+`SnowflakeIdGenerator.create(workerId, datacenterId)`.
+
+### Distributed worker identity
+
+`WorkerIdLeaseStore` provides a storage-neutral contract for reserving worker/datacenter IDs.
+Applications can implement it with Redis, a database, or a Kubernetes coordination service
+without adding that infrastructure as a core idkit dependency. Use `WorkerIdLeases.acquire(...)`
+to validate settings and fail fast on an identity collision.
+
+For Lettuce-based Redis integration, add the optional module:
+
+```kotlin
+dependencies {
+    implementation("io.github.dornol:idkit:3.1.0")
+    implementation("io.github.dornol:idkit-redis:3.1.0")
+    implementation("io.lettuce:lettuce-core:7.6.0.RELEASE")
+}
+```
+
+`RedisWorkerIdLeaseStore` reserves an identity once at startup and refreshes it in a background
+heartbeat. It does not access Redis for each generated ID. If the heartbeat fails, wrap the local
+generator in `LeasedIdGenerator`; subsequent calls then fail closed until the application obtains
+a new lease.
+
+Example:
+
+```kotlin
+val client = RedisClient.create("redis://localhost:6379")
+val connection = client.connect()
+val scheduler = Executors.newSingleThreadScheduledExecutor()
+val leases = RedisWorkerIdLeaseStore(connection.sync(), scheduler)
+val lease = leases.acquireAny(workerCount = 32, owner = hostname)
+
+val generator = LeasedIdGenerator(
+    SnowflakeIdGenerator(
+        workerId = lease.workerId,
+        datacenterId = lease.datacenterId,
+    ),
+    lease,
+)
+
+try {
+    val id = generator.nextId()
+} finally {
+    lease.close()
+    scheduler.shutdown()
+    connection.close()
+    client.shutdown()
+}
+```
+
+If the heartbeat cannot renew the lease, `LeasedIdGenerator` refuses subsequent ID requests.
+Applications should treat that exception as a process health failure and obtain a new lease after
+recovery.
+
+### Fencing downstream operations
+
+Lease fencing tokens protect downstream resources from delayed work by an old owner. A downstream
+adapter must compare tokens atomically; the included in-memory validator is suitable only within a
+single JVM:
+
+```kotlin
+val validator = InMemoryFencingTokenValidator()
+validator.requireNewer("orders-writer", lease.fencingToken)
+// Apply the side effect only after the token is accepted.
+```
+
+For multiple processes, use the durable adapters. `JdbcFencingTokenValidator.initialize()` creates
+its resource table, while `RedisFencingTokenValidator` uses an atomic Lua compare-and-set:
+
+```kotlin
+val validator = JdbcFencingTokenValidator(dataSource)
+validator.initialize()
+validator.requireNewer("orders-writer", lease.fencingToken)
+```
+
+Both adapters reject a lower or equal token, so a delayed worker cannot overwrite a newer owner.
+
+Migration checklist for 3.1.0:
+
+- Run `initialize()` during deployment with DDL permission, or pre-create the JDBC
+  `fencing_token` column and validator table through your normal migration tool.
+- Keep the same Redis `keyPrefix` across instances during a rolling deployment.
+- Use `JdbcFencedOperationExecutor` or `RedisFencedScriptExecutor` for protected side effects;
+  a standalone `requireNewer()` call followed by an unrelated write is not atomic.
+- Treat `REJECTED_STALE` as a worker shutdown/recovery signal, not as a retry with the same token.
+
+For true atomic protection, use `JdbcFencedOperationExecutor.executeWithConnection(...)` and run
+the side effect with its supplied transaction connection. For Redis, use
+`RedisFencedScriptExecutor` and perform the side effect inside the supplied Lua operation script
+(do not add a Lua `return`);
+ordinary code executed after a separate token check still has a race window.
+
+For operations, `RedisWorkerIdLeaseStore.inspect(workerId, datacenterId)` returns the owner name,
+non-reversible token fingerprint, held state, and remaining Redis TTL. Configure `RedisLeaseFailureListener` for a single
+callback when heartbeat renewal fails or the lease is lost. Calling `close()` on the store releases
+all leases it owns, and `MicrometerRedisLeaseMetrics` can expose lifecycle counters and the active
+lease gauge when `micrometer-core` is present.
+
+### JDBC worker leases
+
+For environments that already have a relational database, use the optional `idkit-jdbc` module:
+
+```kotlin
+dependencies {
+    implementation("io.github.dornol:idkit:3.1.0")
+    implementation("io.github.dornol:idkit-jdbc:3.1.0")
+    runtimeOnly("org.postgresql:postgresql:42.7.7") // or the JDBC driver for MySQL, MariaDB, SQL Server, or Oracle
+}
+```
+
+The lease store uses a transaction and row lock. Call `initialize(workerCount, datacenterId)` once
+to create the worker slots, or use `acquireAny(...)`, which initializes them automatically. The
+JDBC connection is used only for acquisition, heartbeat, and release; ID generation remains local.
+Built-in dialects are available for PostgreSQL, MySQL, MariaDB, Microsoft SQL Server, and Oracle:
+
+```kotlin
+JdbcLeaseDialect.POSTGRESQL
+JdbcLeaseDialect.MYSQL       // MySQL
+JdbcLeaseDialect.MARIADB    // MariaDB
+JdbcLeaseDialect.MSSQL      // SQL Server row-lock hints
+JdbcLeaseDialect.ORACLE     // Oracle MERGE and DDL handling
+```
+
+For operations, `JdbcWorkerIdLeaseStore.inspect(workerId, datacenterId)` returns a point-in-time
+`JdbcLeaseStatus` with ownership, expiration, held state, and remaining TTL. Status snapshots expose
+the owner name and a non-reversible token fingerprint, never the raw lease token. Configure
+`JdbcLeaseFailureListener` to receive a single callback when a heartbeat fails or the lease row is
+lost; the lease then becomes invalid and `LeasedIdGenerator` fails closed. Each acquired lease also
+has a monotonically increasing `fencingToken` for rejecting stale workers in downstream systems.
+
+Calling `JdbcWorkerIdLeaseStore.close()` releases every lease acquired from that store, which is
+useful from an application shutdown hook. For Micrometer users, pass `MicrometerJdbcLeaseMetrics`
+as the `metrics` option to expose acquired, failed, heartbeat, released, and active-lease meters.
 
 ### Flake / Snowflake
 
@@ -473,7 +633,9 @@ This library uses the SLF4J API. Without a binding it falls back to the NOP logg
 
 ## Publishing (maintainer notes)
 
-Configured to publish to the Central Publishing Portal via the Vanniktech Maven Publish plugin. Set the following keys in `~/.gradle/gradle.properties`:
+Configured to publish to the Central Publishing Portal via the Vanniktech Maven Publish plugin.
+The release workflow uses JDK 21 because the bundled Dokka version is not compatible with JDK 25.
+Set the following keys in `~/.gradle/gradle.properties`:
 
 ```
 mavenCentralUsername=YOUR_CENTRAL_TOKEN

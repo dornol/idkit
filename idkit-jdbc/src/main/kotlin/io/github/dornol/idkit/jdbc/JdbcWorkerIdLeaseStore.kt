@@ -1,0 +1,224 @@
+package io.github.dornol.idkit.jdbc
+
+import io.github.dornol.idkit.worker.WorkerIdLease
+import io.github.dornol.idkit.worker.WorkerIdLeaseStore
+import io.github.dornol.idkit.worker.LeaseClock
+import io.github.dornol.idkit.worker.SystemLeaseClock
+import javax.sql.DataSource
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+
+/**
+ * JDBC-backed worker leases. ID generation never queries the database; only acquisition and the
+ * background heartbeat use JDBC. Lease rows are pre-created, avoiding database-specific upsert
+ * logic in the hot path.
+ */
+class JdbcWorkerIdLeaseStore(
+    private val dataSource: DataSource,
+    private val scheduler: ScheduledExecutorService,
+    private val dialect: JdbcLeaseDialect = JdbcLeaseDialect.POSTGRESQL,
+    private val tableName: String = "idkit_worker_lease",
+    private val failureListener: JdbcLeaseFailureListener = JdbcLeaseFailureListener { _, _, _ -> },
+    private val metrics: JdbcLeaseMetrics = NoopJdbcLeaseMetrics,
+    private val clock: LeaseClock = SystemLeaseClock,
+) : WorkerIdLeaseStore, AutoCloseable {
+
+    private val activeLeases = ConcurrentHashMap.newKeySet<JdbcWorkerIdLease>()
+
+    init { requireValidTableName(tableName) }
+
+    fun initialize(workerCount: Int, datacenterId: Int = 0) {
+        require(workerCount > 0) { "workerCount must be > 0" }
+        require(datacenterId >= 0) { "datacenterId must be >= 0" }
+        dataSource.connection.use { connection ->
+            val createSql = if (dialect === JdbcLeaseDialect.MSSQL || dialect === JdbcLeaseDialect.ORACLE) {
+                dialect.createTableSql.format(tableName, tableName, "${tableName}_pk")
+            } else {
+                dialect.createTableSql.format(tableName)
+            }
+            connection.createStatement().use { it.execute(createSql) }
+            connection.createStatement().use { statement ->
+                dialect.addFencingTokenSql(tableName).takeIf { it.isNotBlank() }?.let {
+                    try {
+                        statement.execute(it)
+                    } catch (failure: java.sql.SQLException) {
+                        if (!dialect.isDuplicateFencingColumn(failure)) throw failure
+                    }
+                }
+            }
+            connection.autoCommit = false
+            try {
+                connection.prepareStatement(dialect.insertIfAbsentSql(tableName)).use { statement ->
+                    for (workerId in 0 until workerCount) {
+                        statement.setInt(1, datacenterId)
+                        statement.setInt(2, workerId)
+                        statement.addBatch()
+                    }
+                    statement.executeBatch()
+                }
+                connection.commit()
+            } catch (ex: Exception) {
+                connection.rollback()
+                throw ex
+            }
+        }
+    }
+
+    /** Reads one lease row for diagnostics; it does not acquire or renew the lease. */
+    fun inspect(workerId: Int, datacenterId: Int): JdbcLeaseStatus? {
+        require(workerId >= 0) { "workerId must be >= 0" }
+        require(datacenterId >= 0) { "datacenterId must be >= 0" }
+        val observedAt = clock.millis()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "SELECT owner_token, lease_until, fencing_token FROM $tableName WHERE datacenter_id = ? AND worker_id = ?",
+            ).use { statement ->
+                statement.setInt(1, datacenterId)
+                statement.setInt(2, workerId)
+                statement.executeQuery().use { result ->
+                    if (!result.next()) return null
+                    val leaseUntil = result.getLong(2).let { if (result.wasNull()) null else it }
+                    val fencingToken = result.getLong(3).let { if (result.wasNull()) 0L else it }
+                    val rawToken = result.getString(1)
+                    return JdbcLeaseStatus(
+                        workerId = workerId,
+                        datacenterId = datacenterId,
+                        owner = rawToken?.substringBefore(':')?.takeIf { it.isNotEmpty() },
+                        tokenFingerprint = rawToken?.let { Integer.toHexString(it.hashCode()) },
+                        fencingToken = fencingToken,
+                        leaseUntilMillis = leaseUntil,
+                        observedAtMillis = observedAt,
+                    )
+                }
+            }
+        }
+    }
+
+    override fun tryAcquire(workerId: Int, datacenterId: Int, owner: String, ttlMillis: Long): WorkerIdLease? {
+        require(workerId >= 0) { "workerId must be >= 0" }
+        require(datacenterId >= 0) { "datacenterId must be >= 0" }
+        require(owner.isNotBlank()) { "owner must not be blank" }
+        require(ttlMillis > 0) { "ttlMillis must be > 0" }
+        val token = "$owner:${UUID.randomUUID()}"
+        val now = clock.millis()
+        val until = Math.addExact(now, ttlMillis)
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                var currentFencingToken = 0L
+                val available = connection.prepareStatement(
+                    "SELECT owner_token, lease_until, fencing_token FROM ${dialect.fromTableSql(tableName)} " +
+                            "WHERE datacenter_id = ? AND worker_id = ? ${dialect.lockSuffix}"
+                ).use { statement ->
+                    statement.setInt(1, datacenterId); statement.setInt(2, workerId)
+                    statement.executeQuery().use { result ->
+                        if (!result.next()) false
+                        else {
+                            currentFencingToken = result.getLong(3).let { if (result.wasNull()) 0L else it }
+                            result.getString(1) == null || (result.getLong(2) < now && !result.wasNull())
+                        }
+                    }
+                }
+                if (!available) { connection.rollback(); metrics.acquisitionFailed(); return null }
+                val newFencingToken = Math.addExact(currentFencingToken, 1L)
+                connection.prepareStatement(
+                    "UPDATE $tableName SET owner_token = ?, lease_until = ?, fencing_token = ? " +
+                            "WHERE datacenter_id = ? AND worker_id = ?"
+                ).use { statement ->
+                    statement.setString(1, token); statement.setLong(2, until); statement.setLong(3, newFencingToken)
+                    statement.setInt(4, datacenterId); statement.setInt(5, workerId)
+                    statement.executeUpdate()
+                }
+                connection.commit()
+                return JdbcWorkerIdLease(workerId, datacenterId, token, newFencingToken, ttlMillis).also {
+                    activeLeases += it
+                    metrics.acquired()
+                    metrics.activeLeases(activeLeases.size)
+                }
+            } catch (ex: Exception) {
+                metrics.acquisitionFailed()
+                connection.rollback(); throw ex
+            }
+        }
+    }
+
+    fun acquireAny(workerCount: Int, datacenterId: Int = 0, owner: String, ttlMillis: Long = 30_000L): WorkerIdLease {
+        initialize(workerCount, datacenterId)
+        for (workerId in 0 until workerCount) tryAcquire(workerId, datacenterId, owner, ttlMillis)?.let { return it }
+        throw IllegalStateException("No worker identity is available: datacenterId=$datacenterId, workerCount=$workerCount")
+    }
+
+    private inner class JdbcWorkerIdLease(
+        override val workerId: Int,
+        override val datacenterId: Int,
+        private val token: String,
+        override val fencingToken: Long,
+        private val ttlMillis: Long,
+    ) : WorkerIdLease {
+        private val valid = AtomicBoolean(true)
+        private val heartbeat = scheduler.scheduleAtFixedRate({ renew() }, ttlMillis / 3, (ttlMillis / 3).coerceAtLeast(1), TimeUnit.MILLISECONDS)
+        override val isValid: Boolean get() = valid.get()
+
+        private fun renew() {
+            if (!valid.get()) return
+            try {
+                val until = Math.addExact(clock.millis(), ttlMillis)
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement(
+                        "UPDATE $tableName SET lease_until = ? WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?"
+                    ).use { statement ->
+                        statement.setLong(1, until); statement.setInt(2, datacenterId); statement.setInt(3, workerId); statement.setString(4, token)
+                        if (statement.executeUpdate() != 1) {
+                            metrics.heartbeatFailed()
+                            invalidate(IllegalStateException("JDBC worker lease was lost"))
+                        } else {
+                            metrics.heartbeatSucceeded()
+                        }
+                    }
+                }
+            } catch (failure: Exception) {
+                metrics.heartbeatFailed()
+                invalidate(failure)
+            }
+        }
+
+        private fun invalidate(cause: Throwable) {
+            if (valid.getAndSet(false)) {
+                runCatching { failureListener.onFailure(workerId, datacenterId, cause) }
+            }
+        }
+
+        override fun close() {
+            if (!valid.getAndSet(false)) {
+                heartbeat.cancel(false)
+                if (activeLeases.remove(this)) metrics.released()
+                metrics.activeLeases(activeLeases.size)
+                return
+            }
+            heartbeat.cancel(false)
+            runCatching {
+                dataSource.connection.use { connection ->
+                    connection.prepareStatement("UPDATE $tableName SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?").use { statement ->
+                        statement.setInt(1, datacenterId); statement.setInt(2, workerId); statement.setString(3, token); statement.executeUpdate()
+                    }
+                }
+            }
+            activeLeases.remove(this)
+            metrics.released()
+            metrics.activeLeases(activeLeases.size)
+        }
+    }
+
+    override fun close() {
+        activeLeases.toList().forEach { it.close() }
+    }
+
+    private companion object {
+        fun requireValidTableName(value: String) {
+            require(value.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) { "tableName must be a simple SQL identifier" }
+        }
+    }
+}

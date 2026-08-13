@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "2.3.10"
+    kotlin("jvm") version "2.3.21"
     id("java")
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "io.github.dornol"
-version = "3.0.0"
+version = "3.1.0"
 
 repositories {
     mavenCentral()
@@ -19,7 +19,7 @@ repositories {
 val jakartaValidationApi = "jakarta.validation:jakarta.validation-api:3.1.1"
 
 dependencies {
-    api("org.slf4j:slf4j-api:2.0.17")
+    implementation("org.slf4j:slf4j-api:2.0.17")
     // Jakarta Bean Validation is an optional integration point. Users who pull in idkit
     // alongside a validation engine (Spring/Quarkus/Hibernate Validator) get the annotations
     // on the classpath; users who don't incur no extra transitive dependency.
@@ -37,8 +37,18 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// Keep the optional Redis integration module covered by the root verification lifecycle.
+tasks.named("check") {
+    dependsOn(":idkit-redis:check")
+    dependsOn(":idkit-jdbc:check")
+}
 kotlin {
     jvmToolchain(11)
+    @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
+    abiValidation {
+        enabled.set(true)
+    }
 }
 
 java {

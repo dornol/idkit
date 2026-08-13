@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
           cache: gradle
 
       - name: Write GPG key to file
@@ -36,5 +36,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Verify release tag matches project version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          PROJECT_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts)
+          test "$RELEASE_TAG" = "$PROJECT_VERSION"
+
       - name: Build & Publish
-        run: ./gradlew publish --no-daemon
+        run: ./gradlew check publish --no-daemon

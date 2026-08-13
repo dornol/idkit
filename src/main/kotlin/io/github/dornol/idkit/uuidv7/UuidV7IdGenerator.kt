@@ -113,6 +113,10 @@ open class UuidV7IdGenerator(
             val prevCounter = prev and COUNTER_MASK
             val now = currentEpochMillis()
 
+            if (now < 0L) {
+                throw IllegalStateException("UUID v7 timestamp cannot be negative: $now")
+            }
+
             val newTs: Long
             val newCounter: Long
             val counterBorrowed: Boolean
@@ -130,6 +134,12 @@ open class UuidV7IdGenerator(
                 newTs = prevTs
                 newCounter = prevCounter + 1
                 counterBorrowed = false
+            }
+
+            if (newTs > TIMESTAMP_MASK) {
+                throw IllegalStateException(
+                    "UUID v7 timestamp exceeds the 48-bit range: $newTs"
+                )
             }
 
             val newState = (newTs shl COUNTER_BITS) or newCounter

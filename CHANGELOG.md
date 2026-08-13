@@ -215,3 +215,49 @@ try {
 [1.2.1]: https://github.com/dornol/idkit/releases/tag/1.2.1
 [1.2.0]: https://github.com/dornol/idkit/releases/tag/1.2.0
 [1.1.0]: https://github.com/dornol/idkit/releases/tag/1.1.0
+## [3.1.0] - 2026-08-13
+
+Operational lease and distributed fencing improvements:
+
+- Added JDBC and Redis lease integrations with database dialect support, health inspection,
+  heartbeat callbacks, graceful shutdown, Micrometer metrics, and fencing tokens.
+- Added durable JDBC/Redis fencing validators and atomic fenced operation executors.
+- Added concurrent, rollback, stale-owner, and multi-database integration coverage.
+
+### Migration from 3.0.0
+
+- JDBC lease initialization adds `fencing_token` to existing lease tables when missing; production
+  deployments may pre-apply this additive schema change with their migration tool.
+- Configure the same Redis key prefix during rolling upgrades.
+- Fencing protects a downstream side effect only when the token check and side effect use one of
+  the provided atomic executors.
+
+### Unreleased
+
+- Hardened Flake and UUID v7 timestamp arithmetic against `Long`/field overflow.
+- CI now verifies JDK 17 and JDK 21 builds.
+- Updated the Kotlin Gradle plugin to 2.3.21 for current JDK tooling compatibility.
+- Added UUID v7 field decomposition and Java-friendly Snowflake creation.
+- Added a storage-neutral worker identity lease contract for distributed deployments.
+- Added a scheduled/manual JMH smoke workflow for performance regressions.
+- Enabled Kotlin ABI validation so accidental public API breaks fail the build.
+- Added the optional `idkit-redis` module with atomic Redis worker leases, token-checked renewal,
+  TTL expiry, and fail-closed generator support.
+- Configured `idkit-redis` as a separately publishable Maven Central artifact.
+- Added the optional `idkit-jdbc` module with common transaction/row-lock lease logic and
+  PostgreSQL/MySQL dialects.
+- Added built-in JDBC dialects for MariaDB, Microsoft SQL Server, and Oracle.
+- Added JDBC lease inspection snapshots and heartbeat failure callbacks for operational monitoring.
+- Added matching Redis lease inspection, heartbeat failure callbacks, graceful shutdown release,
+  and optional Micrometer metrics.
+- Added injectable lease clocks for deterministic expiry testing and masked raw lease tokens in
+  operational status snapshots.
+- Added monotonically increasing fencing tokens to JDBC and Redis leases, including automatic JDBC
+  schema migration for existing lease tables.
+- Added `FencingTokenValidator`, stale-token exception details, and an atomic in-memory validator
+  for downstream resource protection.
+- Added durable JDBC and Redis fencing token validators with atomic compare-and-set updates.
+- Added JDBC transaction and Redis Lua fenced operation executors that bind token advancement to
+  downstream side effects.
+- Hardened fenced operations for concurrent first-resource creation and rollback/error paths, with
+  JDBC and Redis concurrency integration coverage.

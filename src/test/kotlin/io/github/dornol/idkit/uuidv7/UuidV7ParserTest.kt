@@ -82,6 +82,26 @@ class UuidV7ParserTest {
     }
 
     @Test
+    fun `decompose returns timestamp counter and random bits`() {
+        val clock = io.github.dornol.idkit.testing.TestClock(1_700_000_000_000L)
+        val gen = UuidV7IdGenerator(clock = clock)
+        val uuid = gen.nextId()
+
+        val parts = UuidV7Parser.decompose(uuid)
+        assertEquals(clock.now(), parts.timestamp.toEpochMilli())
+        assertEquals(uuid.mostSignificantBits and 0xFFFL, parts.counter)
+        assertEquals(uuid.leastSignificantBits and 0x3FFFFFFFFFFFFFFFL, parts.randomBits)
+    }
+
+    @Test
+    fun `isValid rejects a version 7 UUID with the wrong variant`() {
+        val uuid = UUID((1_700_000_000_000L shl 16) or (0x7L shl 12), 0L)
+        assertEquals(7, uuid.version())
+        assertFalse(UuidV7Parser.isValid(uuid))
+        assertThrows<IllegalArgumentException> { UuidV7Parser.decompose(uuid) }
+    }
+
+    @Test
     fun `isValid UUID rejects non-v7 versions`() {
         for (version in listOf(1, 3, 4, 5, 6, 8)) {
             val msb = ((version.toLong() and 0xFL) shl 12) or 0x100L
