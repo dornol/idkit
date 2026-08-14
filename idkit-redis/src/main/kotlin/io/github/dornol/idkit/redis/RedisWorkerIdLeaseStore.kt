@@ -29,11 +29,15 @@ class RedisWorkerIdLeaseStore(
     private val failureListener: RedisLeaseFailureListener = RedisLeaseFailureListener { _, _, _ -> },
     private val metrics: RedisLeaseMetrics = NoopRedisLeaseMetrics,
     private val heartbeatFailureThreshold: Int = 1,
+    private val heartbeatIntervalMillis: Long? = null,
 ) : WorkerIdLeaseStore, AutoCloseable {
 
     init {
         require(heartbeatFailureThreshold in 1..2) {
             "heartbeatFailureThreshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
+        require(heartbeatIntervalMillis == null || heartbeatIntervalMillis > 0) {
+            "heartbeatIntervalMillis must be > 0 when specified"
         }
     }
 
@@ -65,7 +69,15 @@ class RedisWorkerIdLeaseStore(
         if (acquired <= 0L) { metrics.acquisitionFailed(); return null }
 
         return try {
-            RedisWorkerIdLease(workerId, datacenterId, key, token, acquired, ttlMillis).also {
+            RedisWorkerIdLease(
+                workerId,
+                datacenterId,
+                key,
+                token,
+                acquired,
+                ttlMillis,
+                heartbeatPeriod(ttlMillis),
+            ).also {
                 activeLeases += it
                 metrics.acquired()
                 metrics.activeLeases(activeLeases.size)
@@ -76,6 +88,15 @@ class RedisWorkerIdLeaseStore(
             metrics.acquisitionFailed()
             throw failure
         }
+    }
+
+    private fun heartbeatPeriod(ttlMillis: Long): Long {
+        val period = heartbeatIntervalMillis ?: (ttlMillis / 3).coerceAtLeast(1L)
+        require(runCatching { Math.multiplyExact(period, heartbeatFailureThreshold.toLong()) }
+            .getOrDefault(Long.MAX_VALUE) < ttlMillis) {
+            "heartbeat interval and failure threshold must detect lease loss before TTL expiry"
+        }
+        return period
     }
 
     /** Reads the Redis value and remaining key TTL without changing the lease. */
@@ -165,6 +186,7 @@ class RedisWorkerIdLeaseStore(
         private val token: String,
         override val fencingToken: Long,
         private val ttlMillis: Long,
+        heartbeatPeriodMillis: Long,
     ) : WorkerIdLease {
         private val storedToken = "$fencingToken|$token"
         private val valid = AtomicBoolean(true)
@@ -172,8 +194,8 @@ class RedisWorkerIdLeaseStore(
         @Volatile private var leaseUntilMillis = System.currentTimeMillis() + ttlMillis
         private val heartbeat = scheduler.scheduleAtFixedRate(
             { renew() },
-            ttlMillis / 3,
-            (ttlMillis / 3).coerceAtLeast(1L),
+            heartbeatPeriodMillis,
+            heartbeatPeriodMillis,
             TimeUnit.MILLISECONDS,
         )
 

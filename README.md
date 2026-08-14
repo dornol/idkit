@@ -121,17 +121,25 @@ Configure one backend and inject `IdGenerator<Long>` into application services:
 ```yaml
 idkit:
   backend: jdbc # jdbc or redis
+  # Optional when multiple services share one lease backend.
+  # lease-namespace: service1
   worker-count: 32
+  # Optional. Restrict this instance to one worker slot instead of automatic allocation.
+  # worker-id: 3
   datacenter-id: 0
   owner: ${HOSTNAME:local}
   lease-ttl: 30s
   backend-operation-timeout: 5s
+  # Optional. Defaults to lease-ttl / 3 (10s with the defaults above).
+  # heartbeat-interval: 5s
   heartbeat-failure-threshold: 1
   acquisition-attempts: 3
   acquisition-retry-delay: 1s
   recovery:
     enabled: true
     retry-delay: 1s
+    retry-jitter: 500ms
+    max-retry-delay: 30s
   metrics:
     enabled: true
     prefix: idkit.lease
@@ -150,13 +158,19 @@ idkit:
     dialect: POSTGRESQL
     table-name: idkit_worker_lease
     clock-skew-allowance: 1s
+    # Optional when the application has multiple DataSource beans.
+    # data-source-bean-name: idkitDataSource
 ```
 
 For Redis, set `idkit.backend: redis` and configure `idkit.redis.uri` and
 `idkit.redis.key-prefix`. For JDBC, setting `auto-initialize: true` creates the lease table and
 worker rows at startup. It defaults to `false`, which is safer for production environments where
 schema changes are managed separately; enable it explicitly for local development or when the
-application has the required DDL permissions. `snowflake`
+application has the required DDL permissions. If the application has multiple JDBC data sources,
+set `idkit.jdbc.data-source-bean-name` to the bean dedicated to lease storage. The Redis starter
+creates an IDKit-specific client and connection from `idkit.redis.uri` even when the application
+already has its own Redis client, so the lease store can run on a separate Redis instance or
+cluster. `snowflake`
 keeps the standard 41/5/5 layout, while `flake` applies the configured timestamp, datacenter,
 worker, and sequence bit layout across the 64-bit ID. When Spring Boot Actuator is present,
 `idkitHealthIndicator` reports the lease state; when Micrometer is present, lease lifecycle
@@ -173,8 +187,10 @@ statements for review and application by Flyway, Liquibase, or an equivalent pro
 `heartbeat-failure-threshold` controls how many consecutive renewal failures are tolerated before
 the lease is invalidated. It accepts `1` or `2`; the default `1` fails closed immediately. This
 limit keeps the built-in heartbeat schedule from allowing the lease TTL to expire first.
-Both backends renew at roughly one-third of the configured TTL; a successful renewal resets the
-backend lease to the full TTL. If the scheduler is paused or the backend is unreachable until the
+`heartbeat-interval` can override the default `lease-ttl / 3`. It must be short enough that
+`heartbeat-interval * heartbeat-failure-threshold < lease-ttl`; otherwise startup is rejected.
+By default both backends renew at roughly one-third of the configured TTL; a successful renewal
+resets the backend lease to the full TTL. If the scheduler is paused or the backend is unreachable until the
 known local deadline, the lease is invalidated locally and ID generation stops.
 
 `backend-operation-timeout` bounds Redis commands and JDBC lease statements. Configure the JDBC
@@ -189,6 +205,14 @@ immediately failing startup. Once a lease is lost after startup, ID generation r
 set `idkit.recovery.enabled: true` (the default) to periodically reacquire the lease and rebuild
 the generator after the backend recovers. `idkit.recovery.retry-delay` controls that background
 retry interval. During recovery, ID requests fail closed until a new lease is confirmed.
+By default the starter leases the first available worker ID. Set `idkit.worker-id` to restrict
+an instance to a specific worker slot; that same slot is used for recovery and startup fails if it
+cannot be acquired after the configured retries. The value must be between `0` and
+`worker-count - 1`.
+When many instances share one backend, recovery retries use exponential backoff with jitter
+(`retry-delay`, `retry-jitter`, and `max-retry-delay`) to avoid a synchronized reconnect storm.
+`lease-namespace` isolates services sharing the same Redis key prefix or JDBC table; it does not
+change the generated ID format, so it is appropriate when services have separate ID domains.
 For Java callers, use `RecoveringLeasedIdGenerator.create(...)` with
 `Supplier<WorkerIdLease>` and `Function<WorkerIdLease, IdGenerator<T>>` callbacks.
 automatic reuse of the same worker identity is intentionally not performed.

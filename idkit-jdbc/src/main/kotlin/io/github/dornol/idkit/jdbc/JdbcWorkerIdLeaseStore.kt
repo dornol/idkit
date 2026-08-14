@@ -27,6 +27,7 @@ class JdbcWorkerIdLeaseStore(
     private val heartbeatFailureThreshold: Int = 1,
     private val clockSkewAllowanceMillis: Long = 1_000L,
     private val statementTimeoutSeconds: Int = 5,
+    private val heartbeatIntervalMillis: Long? = null,
 ) : WorkerIdLeaseStore, AutoCloseable {
 
     private val activeLeases = ConcurrentHashMap.newKeySet<JdbcWorkerIdLease>()
@@ -44,6 +45,9 @@ class JdbcWorkerIdLeaseStore(
         }
         require(clockSkewAllowanceMillis >= 0) { "clockSkewAllowanceMillis must be >= 0" }
         require(statementTimeoutSeconds >= 0) { "statementTimeoutSeconds must be >= 0" }
+        require(heartbeatIntervalMillis == null || heartbeatIntervalMillis > 0) {
+            "heartbeatIntervalMillis must be > 0 when specified"
+        }
     }
 
     /**
@@ -205,7 +209,15 @@ class JdbcWorkerIdLeaseStore(
                 }
                 connection.commit()
                 return try {
-                    JdbcWorkerIdLease(workerId, datacenterId, token, newFencingToken, ttlMillis, until).also {
+                    JdbcWorkerIdLease(
+                        workerId,
+                        datacenterId,
+                        token,
+                        newFencingToken,
+                        ttlMillis,
+                        until,
+                        heartbeatPeriod(ttlMillis),
+                    ).also {
                         activeLeases += it
                         metrics.acquired()
                         metrics.activeLeases(activeLeases.size)
@@ -221,6 +233,15 @@ class JdbcWorkerIdLeaseStore(
                 connection.rollback(); throw ex
             }
         }
+    }
+
+    private fun heartbeatPeriod(ttlMillis: Long): Long {
+        val period = heartbeatIntervalMillis ?: (ttlMillis / 3).coerceAtLeast(1L)
+        require(runCatching { Math.multiplyExact(period, heartbeatFailureThreshold.toLong()) }
+            .getOrDefault(Long.MAX_VALUE) < ttlMillis) {
+            "heartbeat interval and failure threshold must detect lease loss before TTL expiry"
+        }
+        return period
     }
 
     fun acquireAny(
@@ -287,11 +308,17 @@ class JdbcWorkerIdLeaseStore(
         override val fencingToken: Long,
         private val ttlMillis: Long,
         initialLeaseUntilMillis: Long,
+        heartbeatPeriodMillis: Long,
     ) : WorkerIdLease {
         private val valid = AtomicBoolean(true)
         private val heartbeatFailures = java.util.concurrent.atomic.AtomicInteger()
         @Volatile private var leaseUntilMillis = initialLeaseUntilMillis
-        private val heartbeat = scheduler.scheduleAtFixedRate({ renew() }, ttlMillis / 3, (ttlMillis / 3).coerceAtLeast(1), TimeUnit.MILLISECONDS)
+        private val heartbeat = scheduler.scheduleAtFixedRate(
+            { renew() },
+            heartbeatPeriodMillis,
+            heartbeatPeriodMillis,
+            TimeUnit.MILLISECONDS,
+        )
         override val isValid: Boolean
             get() {
                 if (valid.get() && remainingTtlMillis <= 0) {

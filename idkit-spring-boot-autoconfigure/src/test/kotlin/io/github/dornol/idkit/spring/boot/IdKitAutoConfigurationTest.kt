@@ -21,6 +21,11 @@ class IdKitAutoConfigurationTest {
         assertEquals(java.time.Duration.ofSeconds(1), IdKitProperties().acquisitionRetryDelay)
         assertEquals(java.time.Duration.ofSeconds(5), IdKitProperties().backendOperationTimeout)
         assertEquals(java.time.Duration.ofSeconds(1), IdKitProperties().jdbc.clockSkewAllowance)
+        assertEquals(null, IdKitProperties().workerId)
+        assertEquals(null, IdKitProperties().heartbeatInterval)
+        assertEquals(null, IdKitProperties().leaseNamespace)
+        assertEquals(java.time.Duration.ofMillis(500), IdKitProperties().recovery.retryJitter)
+        assertEquals(java.time.Duration.ofSeconds(30), IdKitProperties().recovery.maxRetryDelay)
     }
 
     @Test
@@ -67,6 +72,17 @@ class IdKitAutoConfigurationTest {
         assertThrows<IllegalArgumentException> {
             IdKitGeneratorFactory.validate(properties)
         }
+    }
+
+    @Test
+    fun `fixed worker id is optional`() {
+        val properties = IdKitProperties().apply {
+            workerCount = 4
+            workerId = 3
+        }
+
+        assertEquals(3, properties.workerId)
+        assertTrue(properties.workerId!! in 0 until properties.workerCount)
     }
 
     @Test

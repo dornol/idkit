@@ -45,7 +45,7 @@ class RedisIdKitAutoConfiguration {
         }
 
     @Bean(destroyMethod = "shutdown")
-    @ConditionalOnMissingBean(RedisClient::class)
+    @ConditionalOnMissingBean(name = ["idKitRedisClient"])
     fun idKitRedisClient(properties: IdKitProperties): RedisClient {
         val uri = RedisURI.create(properties.redis.uri)
         uri.timeout = properties.backendOperationTimeout
@@ -53,13 +53,16 @@ class RedisIdKitAutoConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    @ConditionalOnMissingBean(StatefulRedisConnection::class)
-    fun idKitRedisConnection(client: RedisClient): StatefulRedisConnection<String, String> =
+    @ConditionalOnMissingBean(name = ["idKitRedisConnection"])
+    fun idKitRedisConnection(
+        @org.springframework.beans.factory.annotation.Qualifier("idKitRedisClient") client: RedisClient,
+    ): StatefulRedisConnection<String, String> =
         client.connect()
 
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(RedisWorkerIdLeaseStore::class)
     fun redisWorkerIdLeaseStore(
+        @org.springframework.beans.factory.annotation.Qualifier("idKitRedisConnection")
         connection: StatefulRedisConnection<String, String>,
         @org.springframework.beans.factory.annotation.Qualifier("idKitScheduler")
         idKitScheduler: ScheduledExecutorService,
@@ -68,8 +71,9 @@ class RedisIdKitAutoConfiguration {
     ): RedisWorkerIdLeaseStore = RedisWorkerIdLeaseStore(
         commands = connection.sync(),
         scheduler = idKitScheduler,
-        keyPrefix = properties.redis.keyPrefix,
+        keyPrefix = properties.redis.keyPrefixForNamespace(properties.leaseNamespace),
         heartbeatFailureThreshold = properties.heartbeatFailureThreshold,
+        heartbeatIntervalMillis = properties.heartbeatInterval?.toMillis(),
         failureListener = RedisLeaseFailureListener { workerId, datacenterId, cause ->
             log.error("idkit Redis worker lease lost: workerId={}, datacenterId={}", workerId, datacenterId, cause)
         },
@@ -114,30 +118,71 @@ class RedisIdKitAutoConfiguration {
             scheduler = idKitScheduler,
             recoveryScheduler = idKitRecoveryScheduler,
             recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
+            recoveryRetryJitterMillis = properties.recovery.retryJitter.toMillis(),
+            recoveryMaxRetryDelayMillis = properties.recovery.maxRetryDelay.toMillis(),
             acquire = { acquire(store, properties) },
             generatorFactory = factory,
             metrics = recoveryMetrics,
         )
     }
 
-    private fun acquire(store: RedisWorkerIdLeaseStore, properties: IdKitProperties): WorkerIdLease =
-        store.acquireAny(
-            workerCount = properties.workerCount,
-            datacenterId = properties.datacenterId,
-            owner = properties.owner,
-            ttlMillis = properties.leaseTtl.toMillis(),
-            acquisitionAttempts = properties.acquisitionAttempts,
-            acquisitionRetryDelayMillis = properties.acquisitionRetryDelay.toMillis(),
+    private fun acquire(store: RedisWorkerIdLeaseStore, properties: IdKitProperties): WorkerIdLease {
+        if (properties.workerId == null) {
+            return store.acquireAny(
+                workerCount = properties.workerCount,
+                datacenterId = properties.datacenterId,
+                owner = properties.owner,
+                ttlMillis = properties.leaseTtl.toMillis(),
+                acquisitionAttempts = properties.acquisitionAttempts,
+                acquisitionRetryDelayMillis = properties.acquisitionRetryDelay.toMillis(),
+            )
+        }
+        var lastFailure: Throwable? = null
+        repeat(properties.acquisitionAttempts) { attempt ->
+            try {
+                store.tryAcquire(
+                    workerId = properties.workerId!!,
+                    datacenterId = properties.datacenterId,
+                    owner = properties.owner,
+                    ttlMillis = properties.leaseTtl.toMillis(),
+                )?.let { return it }
+            } catch (failure: RuntimeException) {
+                lastFailure = failure
+            }
+            if (attempt + 1 < properties.acquisitionAttempts) {
+                sleepBeforeRetry(properties.acquisitionRetryDelay.toMillis())
+            }
+        }
+        error(
+            "Configured idkit worker identity is unavailable: " +
+                    "workerId=${properties.workerId}, datacenterId=${properties.datacenterId}" +
+                    (lastFailure?.let { "; lastFailure=${it.message}" } ?: ""),
         )
+    }
+
+    private fun sleepBeforeRetry(delayMillis: Long) {
+        if (delayMillis == 0L) return
+        try {
+            Thread.sleep(delayMillis)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("Interrupted while retrying Redis worker lease acquisition", interrupted)
+        }
+    }
 
     private fun validate(properties: IdKitProperties) {
+        validateLeaseNamespace(properties)
         require(properties.workerCount > 0) { "idkit.worker-count must be > 0" }
+        require(properties.workerId == null || properties.workerId!! in 0 until properties.workerCount) {
+            "idkit.worker-id must be between 0 and worker-count - 1"
+        }
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
         require(properties.heartbeatFailureThreshold in 1..2) {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
         }
+        validateHeartbeatInterval(properties)
         require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
             "idkit.backend-operation-timeout must be positive"
         }
@@ -146,5 +191,39 @@ class RedisIdKitAutoConfiguration {
         require(!properties.recovery.retryDelay.isZero && !properties.recovery.retryDelay.isNegative) {
             "idkit.recovery.retry-delay must be positive"
         }
+        require(!properties.recovery.retryJitter.isNegative) {
+            "idkit.recovery.retry-jitter must not be negative"
+        }
+        require(!properties.recovery.maxRetryDelay.isNegative && !properties.recovery.maxRetryDelay.isZero) {
+            "idkit.recovery.max-retry-delay must be positive"
+        }
+        require(properties.recovery.maxRetryDelay >= properties.recovery.retryDelay) {
+            "idkit.recovery.max-retry-delay must be >= retry-delay"
+        }
     }
+
+    private fun validateHeartbeatInterval(properties: IdKitProperties) {
+        val interval = properties.heartbeatInterval ?: return
+        require(!interval.isZero && !interval.isNegative) {
+            "idkit.heartbeat-interval must be positive"
+        }
+        val intervalMillis = interval.toMillis()
+        require(
+            intervalMillis > 0 &&
+                    runCatching {
+                        Math.multiplyExact(intervalMillis, properties.heartbeatFailureThreshold.toLong())
+                    }.getOrDefault(Long.MAX_VALUE) < properties.leaseTtl.toMillis()
+        ) {
+            "idkit.heartbeat-interval and heartbeat-failure-threshold must detect lease loss before lease-ttl"
+        }
+    }
+
+    private fun validateLeaseNamespace(properties: IdKitProperties) {
+        require(properties.leaseNamespace?.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) != false) {
+            "idkit.lease-namespace must be a simple identifier"
+        }
+    }
+
+    private fun IdKitProperties.Redis.keyPrefixForNamespace(namespace: String?): String =
+        namespace?.let { "${keyPrefix}:$it" } ?: keyPrefix
 }

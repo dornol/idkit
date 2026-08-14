@@ -121,6 +121,7 @@ class IdKitSpringBootIntegrationTest {
             .withPropertyValues(
                 "idkit.backend=redis",
                 "idkit.worker-count=4",
+                "idkit.worker-id=2",
                 "idkit.owner=spring-redis-test",
                 "idkit.redis.uri=$uri",
                 "idkit.redis.key-prefix=test:idkit:spring",
@@ -131,6 +132,7 @@ class IdKitSpringBootIntegrationTest {
                 assertTrue(context.getBeansOfType(JdbcWorkerIdLeaseStore::class.java).isEmpty())
                 assertTrue(registry.meters.any { it.id.name.endsWith("acquired") })
                 assertNotNull(context.getBean(HealthIndicator::class.java))
+                assertEquals(2, context.getBean(io.github.dornol.idkit.worker.WorkerIdLease::class.java).workerId)
             }
     }
 

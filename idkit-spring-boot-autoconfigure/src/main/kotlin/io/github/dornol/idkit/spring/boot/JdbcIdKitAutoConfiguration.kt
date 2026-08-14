@@ -21,6 +21,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
+import org.springframework.context.ApplicationContext
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import javax.sql.DataSource
@@ -50,16 +51,16 @@ class JdbcIdKitAutoConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(JdbcWorkerIdLeaseStore::class)
     fun jdbcWorkerIdLeaseStore(
-        dataSource: DataSource,
+        applicationContext: ApplicationContext,
         @org.springframework.beans.factory.annotation.Qualifier("idKitScheduler")
         idKitScheduler: ScheduledExecutorService,
         properties: IdKitProperties,
         metrics: JdbcLeaseMetrics,
     ): JdbcWorkerIdLeaseStore = JdbcWorkerIdLeaseStore(
-        dataSource = dataSource,
+        dataSource = applicationContext.idKitDataSource(properties),
         scheduler = idKitScheduler,
         dialect = properties.jdbc.dialect.toDialect(),
-        tableName = properties.jdbc.tableName,
+        tableName = properties.jdbc.tableNameForNamespace(properties.leaseNamespace),
         failureListener = JdbcLeaseFailureListener { workerId, datacenterId, cause ->
             log.error("idkit JDBC worker lease lost: workerId={}, datacenterId={}", workerId, datacenterId, cause)
         },
@@ -67,6 +68,7 @@ class JdbcIdKitAutoConfiguration {
         heartbeatFailureThreshold = properties.heartbeatFailureThreshold,
         clockSkewAllowanceMillis = properties.jdbc.clockSkewAllowance.toMillis(),
         statementTimeoutSeconds = properties.backendOperationTimeout.seconds.coerceAtLeast(1).toInt(),
+        heartbeatIntervalMillis = properties.heartbeatInterval?.toMillis(),
         clock = SystemLeaseClock,
     )
 
@@ -114,6 +116,8 @@ class JdbcIdKitAutoConfiguration {
             scheduler = idKitScheduler,
             recoveryScheduler = idKitRecoveryScheduler,
             recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
+            recoveryRetryJitterMillis = properties.recovery.retryJitter.toMillis(),
+            recoveryMaxRetryDelayMillis = properties.recovery.maxRetryDelay.toMillis(),
             acquire = { acquire(store, properties) },
             generatorFactory = factory,
             metrics = recoveryMetrics,
@@ -125,7 +129,7 @@ class JdbcIdKitAutoConfiguration {
         var lastFailure: Throwable? = null
         repeat(properties.acquisitionAttempts) { attempt ->
             try {
-                for (workerId in 0 until properties.workerCount) {
+                for (workerId in properties.workerIds()) {
                     store.tryAcquire(
                         workerId = workerId,
                         datacenterId = properties.datacenterId,
@@ -156,8 +160,15 @@ class JdbcIdKitAutoConfiguration {
         }
     }
 
+    private fun IdKitProperties.workerIds(): IntRange =
+        workerId?.let { it..it } ?: (0 until workerCount)
+
     private fun validate(properties: IdKitProperties) {
+        validateLeaseNamespace(properties)
         require(properties.workerCount > 0) { "idkit.worker-count must be > 0" }
+        require(properties.workerId == null || properties.workerId!! in 0 until properties.workerCount) {
+            "idkit.worker-id must be between 0 and worker-count - 1"
+        }
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
@@ -169,11 +180,53 @@ class JdbcIdKitAutoConfiguration {
         require(properties.heartbeatFailureThreshold in 1..2) {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
         }
+        validateHeartbeatInterval(properties)
         require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
             "idkit.backend-operation-timeout must be positive"
         }
         require(!properties.jdbc.clockSkewAllowance.isNegative) {
             "idkit.jdbc.clock-skew-allowance must not be negative"
+        }
+        require(properties.jdbc.dataSourceBeanName?.isNotBlank() != false) {
+            "idkit.jdbc.data-source-bean-name must not be blank"
+        }
+        require(!properties.recovery.retryJitter.isNegative) {
+            "idkit.recovery.retry-jitter must not be negative"
+        }
+        require(!properties.recovery.maxRetryDelay.isNegative && !properties.recovery.maxRetryDelay.isZero) {
+            "idkit.recovery.max-retry-delay must be positive"
+        }
+        require(properties.recovery.maxRetryDelay >= properties.recovery.retryDelay) {
+            "idkit.recovery.max-retry-delay must be >= retry-delay"
+        }
+    }
+
+    private fun validateLeaseNamespace(properties: IdKitProperties) {
+        require(properties.leaseNamespace?.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) != false) {
+            "idkit.lease-namespace must be a simple identifier"
+        }
+    }
+
+    private fun IdKitProperties.Jdbc.tableNameForNamespace(namespace: String?): String =
+        namespace?.let { "${tableName}_$it" } ?: tableName
+
+    private fun ApplicationContext.idKitDataSource(properties: IdKitProperties): DataSource =
+        properties.jdbc.dataSourceBeanName?.let { getBean(it, DataSource::class.java) }
+            ?: getBean(DataSource::class.java)
+
+    private fun validateHeartbeatInterval(properties: IdKitProperties) {
+        val interval = properties.heartbeatInterval ?: return
+        require(!interval.isZero && !interval.isNegative) {
+            "idkit.heartbeat-interval must be positive"
+        }
+        val intervalMillis = interval.toMillis()
+        require(
+            intervalMillis > 0 &&
+                    runCatching {
+                        Math.multiplyExact(intervalMillis, properties.heartbeatFailureThreshold.toLong())
+                    }.getOrDefault(Long.MAX_VALUE) < properties.leaseTtl.toMillis()
+        ) {
+            "idkit.heartbeat-interval and heartbeat-failure-threshold must detect lease loss before lease-ttl"
         }
     }
 

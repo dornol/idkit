@@ -8,11 +8,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties("idkit")
 class IdKitProperties {
     var backend: Backend? = null
+    /** Optional namespace for isolating lease ownership between services sharing one backend. */
+    var leaseNamespace: String? = null
     var workerCount: Int = 32
+    /** Optional fixed worker slot. When absent, the first available slot is leased. */
+    var workerId: Int? = null
     var datacenterId: Int = 0
     var owner: String = defaultOwner()
     var leaseTtl: Duration = Duration.ofSeconds(30)
     var heartbeatFailureThreshold: Int = 1
+    /** Optional heartbeat interval; defaults to one-third of the lease TTL. */
+    var heartbeatInterval: Duration? = null
     var backendOperationTimeout: Duration = Duration.ofSeconds(5)
     var acquisitionAttempts: Int = 3
     var acquisitionRetryDelay: Duration = Duration.ofSeconds(1)
@@ -32,6 +38,8 @@ class IdKitProperties {
     class Recovery {
         var enabled: Boolean = true
         var retryDelay: Duration = Duration.ofSeconds(1)
+        var retryJitter: Duration = Duration.ofMillis(500)
+        var maxRetryDelay: Duration = Duration.ofSeconds(30)
     }
 
     class Generator {
@@ -60,6 +68,8 @@ class IdKitProperties {
         var tableName: String = "idkit_worker_lease"
         /** Extra delay before another process may reuse a row, absorbing clock skew. */
         var clockSkewAllowance: Duration = Duration.ofSeconds(1)
+        /** Optional Spring Bean name for the DataSource dedicated to IDKit. */
+        var dataSourceBeanName: String? = null
     }
 
     class Redis {
