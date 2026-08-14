@@ -3,3 +3,4 @@ io.github.dornol.idkit.spring.boot.RedisIdKitAutoConfiguration
 io.github.dornol.idkit.spring.boot.JdbcMicrometerIdKitAutoConfiguration
 io.github.dornol.idkit.spring.boot.RedisMicrometerIdKitAutoConfiguration
 io.github.dornol.idkit.spring.boot.IdKitHealthAutoConfiguration
+io.github.dornol.idkit.spring.boot.LocalIdKitAutoConfiguration
