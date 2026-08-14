@@ -5,6 +5,7 @@ plugins {
     id("java")
     id("com.vanniktech.maven.publish") version "0.34.0"
     id("signing")
+    jacoco
     id("org.jetbrains.dokka") version "1.9.20"
     id("me.champeau.jmh") version "0.7.3"
 }
@@ -36,6 +37,28 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// Keep a per-module XML/HTML coverage report available on every verification run. The report is
+// intentionally informational for now; thresholds can be introduced once the integration suite
+// has a stable baseline across all supported databases.
+tasks.named("check") {
+    dependsOn("jacocoTestReport")
+}
+
+subprojects {
+    apply(plugin = "jacoco")
+    tasks.withType<org.gradle.testing.jacoco.tasks.JacocoReport>().configureEach {
+        dependsOn(tasks.withType<Test>())
+        reports {
+            xml.required.set(true)
+            html.required.set(true)
+            csv.required.set(false)
+        }
+    }
+    tasks.matching { it.name == "check" }.configureEach {
+        dependsOn("jacocoTestReport")
+    }
 }
 
 // Keep the optional Redis integration module covered by the root verification lifecycle.

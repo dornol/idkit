@@ -30,7 +30,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build and test
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build --no-daemon -Didkit.requireIntegrationTests=true
 
       - name: Upload test reports on failure
         if: failure()

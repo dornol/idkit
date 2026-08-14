@@ -22,6 +22,8 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.utility.DockerImageName
 import javax.sql.DataSource
 import java.util.function.Supplier
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IdKitSpringBootIntegrationTest {
@@ -31,10 +33,11 @@ class IdKitSpringBootIntegrationTest {
 
     @BeforeAll
     fun startContainers() {
-        assumeTrue(
-            runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false),
-            "Docker is unavailable; skipping Spring Boot integration tests",
-        )
+        val available = runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false)
+        if (!available && System.getProperty("idkit.requireIntegrationTests").toBoolean()) {
+            error("Docker is required for Spring Boot integration tests")
+        }
+        assumeTrue(available, "Docker is unavailable; skipping Spring Boot integration tests")
 
         postgres = GenericContainer(DockerImageName.parse("postgres:16-alpine"))
             .withEnv("POSTGRES_DB", "idkit")
@@ -155,5 +158,44 @@ class IdKitSpringBootIntegrationTest {
                 assertTrue(context.getBean(IdGenerator::class.java).nextId() is Long)
                 assertTrue(context.getBeansOfType(HealthIndicator::class.java).isEmpty())
             }
+    }
+
+    @Test
+    fun jdbcStartupRetriesWhenTheOnlyWorkerIsTemporarilyOccupied() {
+        val tableName = "idkit_spring_retry_lease"
+        val setupScheduler = Executors.newSingleThreadScheduledExecutor()
+        val setupStore = JdbcWorkerIdLeaseStore(
+            dataSource = postgresDataSource,
+            scheduler = setupScheduler,
+            tableName = tableName,
+        )
+        setupStore.initialize(workerCount = 1)
+        val occupied = setupStore.tryAcquire(0, 0, "occupied", 5_000)!!
+        setupScheduler.schedule({ occupied.close() }, 100, TimeUnit.MILLISECONDS)
+
+        try {
+            ApplicationContextRunner()
+                .withConfiguration(
+                    AutoConfigurations.of(
+                        JdbcIdKitAutoConfiguration::class.java,
+                    ),
+                )
+                .withBean(DataSource::class.java, Supplier { postgresDataSource })
+                .withPropertyValues(
+                    "idkit.backend=jdbc",
+                    "idkit.worker-count=1",
+                    "idkit.owner=spring-retry-test",
+                    "idkit.jdbc.table-name=$tableName",
+                    "idkit.jdbc.validate-schema=true",
+                    "idkit.acquisition-attempts=4",
+                    "idkit.acquisition-retry-delay=150ms",
+                )
+                .run { context ->
+                    assertTrue(context.getBean(io.github.dornol.idkit.worker.WorkerIdLease::class.java).isValid)
+                }
+        } finally {
+            setupStore.close()
+            setupScheduler.shutdownNow()
+        }
     }
 }

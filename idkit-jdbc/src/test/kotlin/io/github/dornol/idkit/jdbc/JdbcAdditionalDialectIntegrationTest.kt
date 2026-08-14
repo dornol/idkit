@@ -31,10 +31,11 @@ class JdbcAdditionalDialectIntegrationTest {
 
     @BeforeAll
     fun verifyDocker() {
-        assumeTrue(
-            runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false),
-            "Docker is unavailable; skipping JDBC dialect integration tests",
-        )
+        val available = runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false)
+        if (!available && System.getProperty("idkit.requireIntegrationTests").toBoolean()) {
+            error("Docker is required for JDBC dialect integration tests")
+        }
+        assumeTrue(available, "Docker is unavailable; skipping JDBC dialect integration tests")
     }
 
     @AfterAll

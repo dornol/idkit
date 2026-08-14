@@ -7,6 +7,7 @@ import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.worker.FencedOperationResult
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -25,6 +26,7 @@ import java.util.concurrent.Future
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.sql.SQLException
 import javax.sql.DataSource
 import java.lang.reflect.Proxy
@@ -40,10 +42,7 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
 
     @BeforeAll
     fun startDatabase() {
-        assumeTrue(
-            runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false),
-            "Docker is unavailable; skipping JDBC integration tests",
-        )
+        requireDocker("Docker is unavailable; skipping JDBC integration tests")
         postgres = GenericContainer(DockerImageName.parse("postgres:16-alpine"))
             .withEnv("POSTGRES_DB", "idkit")
             .withEnv("POSTGRES_USER", "idkit")
@@ -184,6 +183,75 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
         val reacquired = store.tryAcquire(2, 3, "new-owner", 2_000)
         assertNotNull(reacquired)
         reacquired?.close()
+    }
+
+    @Test
+    fun `acquire retries until an occupied worker is released`() {
+        store.initialize(1, 30)
+        val occupied = store.tryAcquire(0, 30, "occupied", 5_000)!!
+        scheduler.schedule({ occupied.close() }, 100, TimeUnit.MILLISECONDS)
+
+        val acquired = store.acquireAny(
+            workerCount = 1,
+            datacenterId = 30,
+            owner = "retrying",
+            ttlMillis = 2_000,
+            acquisitionAttempts = 4,
+            acquisitionRetryDelayMillis = 150,
+        )
+
+        assertEquals("retrying", store.inspect(0, 30)!!.owner)
+        acquired.close()
+    }
+
+    @Test
+    fun `heartbeat tolerates one transient failure when threshold is two`() {
+        store.initialize(1, 31)
+        val failed = AtomicBoolean(false)
+        val heartbeatFailures = AtomicInteger()
+        val heartbeatSuccesses = AtomicInteger()
+        val resilientStore = JdbcWorkerIdLeaseStore(
+            dataSource = dataSource.withConnectionFailure(failed),
+            scheduler = scheduler,
+            dialect = JdbcLeaseDialect.POSTGRESQL,
+            tableName = "idkit_test_worker_lease",
+            heartbeatFailureThreshold = 2,
+            metrics = object : JdbcLeaseMetrics {
+                override fun acquired() = Unit
+                override fun acquisitionFailed() = Unit
+                override fun heartbeatSucceeded() { heartbeatSuccesses.incrementAndGet() }
+                override fun heartbeatFailed() { heartbeatFailures.incrementAndGet() }
+                override fun released() = Unit
+                override fun activeLeases(count: Int) = Unit
+            },
+        )
+        val lease = resilientStore.tryAcquire(0, 31, "resilient", 900)!!
+        failed.set(true)
+
+        eventually { heartbeatFailures.get() == 1 }
+        assertTrue(lease.isValid)
+
+        failed.set(false)
+        eventually { heartbeatSuccesses.get() >= 1 && lease.isValid }
+        assertTrue(lease.isValid)
+        lease.close()
+    }
+
+    @Test
+    fun `release backend failure does not escape close and invalidates locally`() {
+        store.initialize(1, 32)
+        val failed = AtomicBoolean(false)
+        val failingStore = JdbcWorkerIdLeaseStore(
+            dataSource = dataSource.withConnectionFailure(failed),
+            scheduler = scheduler,
+            dialect = JdbcLeaseDialect.POSTGRESQL,
+            tableName = "idkit_test_worker_lease",
+        )
+        val lease = failingStore.tryAcquire(0, 32, "release-failure", 5_000)!!
+        failed.set(true)
+
+        assertDoesNotThrow { lease.close() }
+        assertFalse(lease.isValid)
     }
 
     @Test
@@ -356,6 +424,14 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
             Thread.sleep(25)
         }
         assertTrue(condition())
+    }
+
+    private fun requireDocker(message: String) {
+        val available = runCatching { DockerClientFactory.instance().isDockerAvailable }.getOrDefault(false)
+        if (!available && System.getProperty("idkit.requireIntegrationTests").toBoolean()) {
+            error(message.removePrefix("Docker is unavailable; skipping ").removeSuffix(" tests"))
+        }
+        assumeTrue(available, message)
     }
 
     private fun DataSource.withConnectionFailure(failed: AtomicBoolean): DataSource {

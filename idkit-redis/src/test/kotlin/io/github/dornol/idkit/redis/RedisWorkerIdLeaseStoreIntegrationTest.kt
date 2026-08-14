@@ -4,6 +4,7 @@ import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.worker.LeasedIdGenerator
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -18,6 +19,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import io.lettuce.core.RedisClient
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -33,6 +35,9 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
         val dockerAvailable = runCatching {
             org.testcontainers.DockerClientFactory.instance().isDockerAvailable
         }.getOrDefault(false)
+        if (!dockerAvailable && System.getProperty("idkit.requireIntegrationTests").toBoolean()) {
+            error("Docker is required for Redis integration tests")
+        }
         assumeTrue(dockerAvailable, "Docker is unavailable; skipping Redis integration tests")
 
         redis = GenericContainer(DockerImageName.parse("redis:7-alpine"))
@@ -163,6 +168,88 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
         assertEquals(1, failures.size)
         lease.close()
         connection.sync().del("test:callback:worker:0:0")
+    }
+
+    @Test
+    fun `acquire retries until an occupied worker is released`() {
+        val occupied = store.tryAcquire(0, 10, "occupied", 5_000)!!
+        scheduler.schedule({ occupied.close() }, 100, TimeUnit.MILLISECONDS)
+
+        val acquired = store.acquireAny(
+            workerCount = 1,
+            datacenterId = 10,
+            owner = "retrying",
+            ttlMillis = 2_000,
+            acquisitionAttempts = 4,
+            acquisitionRetryDelayMillis = 150,
+        )
+
+        assertEquals("retrying", store.inspect(0, 10).owner)
+        acquired.close()
+    }
+
+    @Test
+    fun `heartbeat tolerates one transient ownership failure when threshold is two`() {
+        val key = "test:threshold:2:11:0"
+        val heartbeatFailures = AtomicInteger()
+        val heartbeatSuccesses = AtomicInteger()
+        val resilientStore = RedisWorkerIdLeaseStore(
+            connection.sync(),
+            scheduler,
+            keyPrefix = "test:threshold:2",
+            heartbeatFailureThreshold = 2,
+            metrics = object : RedisLeaseMetrics {
+                override fun acquired() = Unit
+                override fun acquisitionFailed() = Unit
+                override fun heartbeatSucceeded() { heartbeatSuccesses.incrementAndGet() }
+                override fun heartbeatFailed() { heartbeatFailures.incrementAndGet() }
+                override fun released() = Unit
+                override fun activeLeases(count: Int) = Unit
+            },
+        )
+        val lease = resilientStore.tryAcquire(0, 11, "resilient", 900)!!
+        val storedToken = connection.sync().get(key)!!
+        connection.sync().set(key, "foreign")
+
+        eventually { heartbeatFailures.get() == 1 }
+        assertTrue(lease.isValid)
+
+        connection.sync().set(key, storedToken)
+        eventually { heartbeatSuccesses.get() >= 1 && lease.isValid }
+        assertTrue(lease.isValid)
+        lease.close()
+        connection.sync().del(key, "test:threshold:2:fence:11:0")
+    }
+
+    @Test
+    fun `release backend failure does not escape close and invalidates locally`() {
+        val isolatedClient = RedisClient.create("redis://${redis.host}:${redis.getMappedPort(6379)}")
+        val isolatedConnection = isolatedClient.connect()
+        val isolatedScheduler = Executors.newSingleThreadScheduledExecutor()
+        try {
+            val isolatedStore = RedisWorkerIdLeaseStore(
+                isolatedConnection.sync(),
+                isolatedScheduler,
+                keyPrefix = "test:release-failure",
+            )
+            val lease = isolatedStore.tryAcquire(0, 12, "release-failure", 5_000)!!
+            isolatedConnection.close()
+
+            assertDoesNotThrow { lease.close() }
+            assertFalse(lease.isValid)
+        } finally {
+            isolatedScheduler.shutdownNow()
+            isolatedClient.shutdown()
+        }
+    }
+
+    private fun eventually(timeoutMillis: Long = 5_000, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        while (System.nanoTime() < deadline) {
+            if (condition()) return
+            Thread.sleep(25)
+        }
+        assertTrue(condition())
     }
 
     @Test
