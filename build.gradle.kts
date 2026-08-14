@@ -173,7 +173,7 @@ signing {
 
 mavenPublishing {
     signAllPublications()
-    publishToMavenCentral()
+    publishToMavenCentral(automaticRelease = true)
 
     coordinates("io.github.dornol", "idkit", "$version") // 네임 스페이스, 라이브러리 이름, 버전 순서로 작성
 
