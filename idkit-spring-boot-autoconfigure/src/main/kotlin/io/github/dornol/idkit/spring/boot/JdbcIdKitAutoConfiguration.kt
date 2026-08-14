@@ -14,7 +14,6 @@ import io.github.dornol.idkit.worker.SystemLeaseClock
 import io.github.dornol.idkit.worker.WorkerIdLease
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.AutoConfiguration
-import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -27,11 +26,13 @@ import java.util.concurrent.ScheduledExecutorService
 import javax.sql.DataSource
 
 @AutoConfiguration(
-    after = [DataSourceAutoConfiguration::class],
     // Spring Boot 4 moved DataSourceAutoConfiguration to org.springframework.boot.jdbc.autoconfigure.
-    // Keep the name-based ordering so Docker Compose-provided DataSources are available before
-    // the @ConditionalOnBean checks below are evaluated on both Boot 3 and Boot 4.
-    afterName = ["org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration"],
+    // Name-based ordering keeps this compatible with both Boot 3 and Boot 4 without eagerly
+    // linking against a class that does not exist in the other Boot generation.
+    afterName = [
+        "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration",
+        "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration",
+    ],
 )
 @ConditionalOnClass(JdbcWorkerIdLeaseStore::class)
 @ConditionalOnProperty(prefix = "idkit", name = ["backend"], havingValue = "jdbc")
