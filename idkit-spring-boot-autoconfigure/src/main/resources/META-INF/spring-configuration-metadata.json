@@ -1,0 +1,51 @@
+{
+  "groups": [
+    {
+      "name": "idkit",
+      "type": "io.github.dornol.idkit.spring.boot.IdKitProperties",
+      "description": "idkit Spring Boot settings."
+    },
+    {
+      "name": "idkit.generator",
+      "type": "io.github.dornol.idkit.spring.boot.IdKitProperties$Generator",
+      "description": "ID generator layout settings."
+    },
+    {
+      "name": "idkit.jdbc",
+      "type": "io.github.dornol.idkit.spring.boot.IdKitProperties$Jdbc",
+      "description": "JDBC worker lease settings."
+    },
+    {
+      "name": "idkit.redis",
+      "type": "io.github.dornol.idkit.spring.boot.IdKitProperties$Redis",
+      "description": "Redis worker lease settings."
+    }
+  ],
+  "properties": [
+    { "name": "idkit.backend", "type": "java.lang.String", "description": "Lease backend: jdbc or redis." },
+    { "name": "idkit.worker-count", "type": "java.lang.Integer", "defaultValue": 32, "description": "Number of worker IDs available for allocation." },
+    { "name": "idkit.datacenter-id", "type": "java.lang.Integer", "defaultValue": 0, "description": "Datacenter ID embedded in generated IDs." },
+    { "name": "idkit.owner", "type": "java.lang.String", "description": "Unique owner name for the worker lease." },
+    { "name": "idkit.lease-ttl", "type": "java.time.Duration", "defaultValue": "30s", "description": "Worker lease TTL." },
+    { "name": "idkit.metrics.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Enable Micrometer lease metrics when MeterRegistry is available." },
+    { "name": "idkit.metrics.prefix", "type": "java.lang.String", "defaultValue": "idkit.lease", "description": "Micrometer metric name prefix." },
+    { "name": "idkit.health.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Expose lease state through Actuator health." },
+    { "name": "idkit.generator.type", "type": "java.lang.String", "defaultValue": "snowflake", "description": "Generator type: snowflake or flake." },
+    { "name": "idkit.generator.timestamp-bits", "type": "java.lang.Integer", "defaultValue": 41, "description": "Timestamp bit count for a custom flake layout." },
+    { "name": "idkit.generator.datacenter-id-bits", "type": "java.lang.Integer", "defaultValue": 5, "description": "Datacenter bit count for a custom flake layout." },
+    { "name": "idkit.generator.worker-id-bits", "type": "java.lang.Integer", "defaultValue": 5, "description": "Worker bit count for a custom flake layout." },
+    { "name": "idkit.generator.timestamp-divisor", "type": "java.lang.Long", "defaultValue": 1, "description": "Timestamp resolution divisor." },
+    { "name": "idkit.generator.epoch", "type": "java.time.Instant", "defaultValue": "1970-01-01T00:00:00Z", "description": "Custom generator epoch." },
+    { "name": "idkit.generator.clock-regression-tolerance", "type": "java.time.Duration", "defaultValue": "10ms", "description": "Clock regression tolerance." },
+    { "name": "idkit.jdbc.auto-initialize", "type": "java.lang.Boolean", "defaultValue": true, "description": "Create the JDBC lease table and worker rows at startup." },
+    { "name": "idkit.jdbc.dialect", "type": "java.lang.String", "defaultValue": "POSTGRESQL", "description": "JDBC dialect." },
+    { "name": "idkit.jdbc.table-name", "type": "java.lang.String", "defaultValue": "idkit_worker_lease", "description": "JDBC lease table name." },
+    { "name": "idkit.redis.uri", "type": "java.lang.String", "defaultValue": "redis://localhost:6379", "description": "Redis URI." },
+    { "name": "idkit.redis.key-prefix", "type": "java.lang.String", "defaultValue": "idkit:worker", "description": "Redis key prefix." }
+  ],
+  "hints": [
+    { "name": "idkit.backend", "values": [{ "value": "jdbc" }, { "value": "redis" }] },
+    { "name": "idkit.generator.type", "values": [{ "value": "snowflake" }, { "value": "flake" }] },
+    { "name": "idkit.jdbc.dialect", "values": [{ "value": "POSTGRESQL" }, { "value": "MYSQL" }, { "value": "MARIADB" }, { "value": "MSSQL" }, { "value": "ORACLE" }] }
+  ]
+}

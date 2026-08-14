@@ -1,0 +1,10 @@
+idkit:
+  worker-count: 4
+  datacenter-id: 1
+  owner: spring-consumer-sample
+  generator:
+    type: flake
+    timestamp-bits: 42
+    datacenter-id-bits: 4
+    worker-id-bits: 6
+

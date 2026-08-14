@@ -11,6 +11,7 @@ import io.github.dornol.idkit.worker.SystemLeaseClock
 import io.github.dornol.idkit.worker.WorkerIdLease
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.AutoConfiguration
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
@@ -21,7 +22,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import javax.sql.DataSource
 
-@AutoConfiguration
+@AutoConfiguration(after = [DataSourceAutoConfiguration::class])
 @ConditionalOnClass(JdbcWorkerIdLeaseStore::class)
 @ConditionalOnBean(DataSource::class)
 @ConditionalOnProperty(prefix = "idkit", name = ["backend"], havingValue = "jdbc")
