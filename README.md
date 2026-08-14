@@ -5,7 +5,7 @@ A small, fast collection of thread-safe ID generators for Kotlin/JVM.
 Provided generators:
 - **Snowflake** (`Long`, 64 bits) — strictly increasing ids using Twitter's 41/5/5/12 bit layout.
 - **Flake** (`Long`, 64 bits) — Snowflake-derived generator with a customizable bit layout, epoch, and timestamp resolution.
-- **UUID v7** (`java.util.UUID`) — RFC 9562 §6.2 Method 2 implementation with intra-millisecond monotonicity.
+- **UUID v7** (`java.util.UUID`) — RFC 9562 §6.2 Method 1 implementation with intra-millisecond monotonicity.
 - **ULID** (`String`, 26 chars) — Crockford Base32 encoded, lexicographically sortable, monotonic within a millisecond.
 - **NanoID** (`String`, 21 chars by default) — compact, URL-safe, cryptographically random. Not time-ordered — fills the "opaque public id" slot.
 - **JDBC / Redis worker leases** (optional modules) — automatic worker ID reservation with TTL,
@@ -383,7 +383,7 @@ fun main() {
 ```
 
 Monotonicity (since 2.0.0):
-- The 12-bit `rand_a` region is repurposed as a **dedicated monotonic counter** (RFC 9562 Method 2).
+- The 12-bit `rand_a` region is repurposed as a **fixed-length dedicated monotonic counter** (RFC 9562 Method 1).
 - `(timestamp:52 | counter:12)` is packed into a single `AtomicLong` and updated atomically via CAS.
 - When the counter overflows within the same millisecond, the timestamp is borrowed 1 ms forward and the counter resets to 0. Once the real clock catches up, the stored timestamp realigns naturally.
 - As a result, UUIDs produced by the same generator are **strictly increasing** when compared by `mostSignificantBits` — friendly to database index locality.

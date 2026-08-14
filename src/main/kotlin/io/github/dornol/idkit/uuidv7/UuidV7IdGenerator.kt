@@ -8,12 +8,12 @@ import java.util.concurrent.ThreadLocalRandom
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * UUID v7 generator compliant with RFC 9562 §6.2 **Method 2 — Fixed-Length Dedicated Counter Bits**.
+ * UUID v7 generator compliant with RFC 9562 §6.2 **Method 1 — Fixed Bit-Length Dedicated Counter**.
  *
  *  - UUID v7 places 48 bits of Unix epoch milliseconds in the high part and combines
  *    version/variant markers with random bits, yielding a time-sortable format.
  *  - This implementation guarantees **intra-millisecond monotonicity** by repurposing the 12-bit
- *    `rand_a` field as a dedicated counter.
+ *    `rand_a` field as a fixed-length dedicated counter.
  *  - The timestamp (52 bits) and counter (12 bits) are packed into a single [AtomicLong] and
  *    updated atomically via CAS, so every emitted UUID is strictly increasing when compared by
  *    `mostSignificantBits`, even under heavy concurrency.
