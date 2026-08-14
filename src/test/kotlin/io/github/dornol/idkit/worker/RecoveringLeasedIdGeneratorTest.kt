@@ -6,10 +6,45 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.util.concurrent.Executors
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class RecoveringLeasedIdGeneratorTest {
+    @Test
+    fun `does not leak a replacement lease when closed during recovery`() {
+        val scheduler = Executors.newSingleThreadScheduledExecutor()
+        val first = TestLease(1)
+        val replacement = TestLease(2)
+        val acquisitionStarted = CountDownLatch(1)
+        val continueAcquisition = CountDownLatch(1)
+        val generator = RecoveringLeasedIdGenerator(
+            initialLease = first,
+            initialGenerator = generatorFor(first),
+            scheduler = scheduler,
+            recoveryRetryDelayMillis = 20,
+            acquire = {
+                acquisitionStarted.countDown()
+                continueAcquisition.await(2, TimeUnit.SECONDS)
+                replacement
+            },
+            generatorFactory = ::generatorFor,
+        )
+
+        try {
+            first.valid = false
+            assertTrue(acquisitionStarted.await(2, TimeUnit.SECONDS))
+            generator.close()
+            continueAcquisition.countDown()
+            eventually { !replacement.valid }
+            assertThrows<IllegalStateException> { generator.nextId() }
+        } finally {
+            continueAcquisition.countDown()
+            generator.close()
+            scheduler.shutdownNow()
+        }
+    }
+
     @Test
     fun `fails closed during lease loss and resumes after reacquisition`() {
         val scheduler = Executors.newSingleThreadScheduledExecutor()

@@ -125,6 +125,7 @@ idkit:
   datacenter-id: 0
   owner: ${HOSTNAME:local}
   lease-ttl: 30s
+  backend-operation-timeout: 5s
   heartbeat-failure-threshold: 1
   acquisition-attempts: 3
   acquisition-retry-delay: 1s
@@ -148,6 +149,7 @@ idkit:
     validate-schema: false
     dialect: POSTGRESQL
     table-name: idkit_worker_lease
+    clock-skew-allowance: 1s
 ```
 
 For Redis, set `idkit.backend: redis` and configure `idkit.redis.uri` and
@@ -174,6 +176,12 @@ limit keeps the built-in heartbeat schedule from allowing the lease TTL to expir
 Both backends renew at roughly one-third of the configured TTL; a successful renewal resets the
 backend lease to the full TTL. If the scheduler is paused or the backend is unreachable until the
 known local deadline, the lease is invalidated locally and ID generation stops.
+
+`backend-operation-timeout` bounds Redis commands and JDBC lease statements. Configure the JDBC
+`clock-skew-allowance` at least as large as the maximum clock difference between application
+servers; it intentionally delays JDBC lease reuse to avoid overlapping owners. The heartbeat and
+recovery loops use separate daemon executors so a blocked recovery acquisition cannot starve
+heartbeats.
 
 `acquisition-attempts` and `acquisition-retry-delay` apply only while the application is starting.
 They allow a short database/Redis outage or a worker slot that is about to expire to recover without

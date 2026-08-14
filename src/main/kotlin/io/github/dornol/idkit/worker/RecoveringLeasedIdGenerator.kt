@@ -18,6 +18,7 @@ class RecoveringLeasedIdGenerator<T>(
     initialLease: WorkerIdLease,
     initialGenerator: IdGenerator<T>,
     private val scheduler: ScheduledExecutorService,
+    private val recoveryScheduler: ScheduledExecutorService = scheduler,
     recoveryRetryDelayMillis: Long = 1_000L,
     private val acquire: () -> WorkerIdLease,
     private val generatorFactory: (WorkerIdLease) -> IdGenerator<T>,
@@ -53,10 +54,11 @@ class RecoveringLeasedIdGenerator<T>(
     private val attempts = AtomicLong()
     private val failures = AtomicLong()
     private val recovery: ScheduledFuture<*>
+    private val lifecycleLock = Any()
 
     init {
         require(recoveryRetryDelayMillis > 0) { "recoveryRetryDelayMillis must be > 0" }
-        recovery = scheduler.scheduleWithFixedDelay(
+        recovery = recoveryScheduler.scheduleWithFixedDelay(
             { recoverIfNeeded() },
             recoveryRetryDelayMillis,
             recoveryRetryDelayMillis,
@@ -105,10 +107,16 @@ class RecoveringLeasedIdGenerator<T>(
             val newLease = acquire()
             try {
                 val replacement = State(LeasedIdGenerator(generatorFactory(newLease), newLease))
-                val previous = state.getAndSet(replacement)
-                previous.generator.lease.close()
-                lastFailure.set(null)
-                metrics.recoverySucceeded()
+                synchronized(lifecycleLock) {
+                    if (closed.get()) {
+                        replacement.generator.lease.close()
+                        return
+                    }
+                    val previous = state.getAndSet(replacement)
+                    previous.generator.lease.close()
+                    lastFailure.set(null)
+                    metrics.recoverySucceeded()
+                }
             } catch (failure: Exception) {
                 newLease.close()
                 throw failure
@@ -124,9 +132,11 @@ class RecoveringLeasedIdGenerator<T>(
     }
 
     override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        recovery.cancel(false)
-        state.get().generator.lease.close()
+        synchronized(lifecycleLock) {
+            if (!closed.compareAndSet(false, true)) return
+            recovery.cancel(false)
+            state.get().generator.lease.close()
+        }
     }
 
     private data class State<T>(val generator: LeasedIdGenerator<T>)

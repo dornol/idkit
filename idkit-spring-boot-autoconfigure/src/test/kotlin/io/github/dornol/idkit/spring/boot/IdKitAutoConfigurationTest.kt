@@ -19,6 +19,8 @@ class IdKitAutoConfigurationTest {
         assertTrue(!IdKitProperties().jdbc.autoInitialize)
         assertEquals(3, IdKitProperties().acquisitionAttempts)
         assertEquals(java.time.Duration.ofSeconds(1), IdKitProperties().acquisitionRetryDelay)
+        assertEquals(java.time.Duration.ofSeconds(5), IdKitProperties().backendOperationTimeout)
+        assertEquals(java.time.Duration.ofSeconds(1), IdKitProperties().jdbc.clockSkewAllowance)
     }
 
     @Test

@@ -40,10 +40,18 @@ class JdbcIdKitAutoConfiguration {
             Thread(runnable, "idkit-lease-heartbeat").apply { isDaemon = true }
         }
 
+    @Bean(name = ["idKitRecoveryScheduler"], destroyMethod = "shutdown")
+    @ConditionalOnMissingBean(name = ["idKitRecoveryScheduler"])
+    fun idKitRecoveryScheduler(): ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "idkit-lease-recovery").apply { isDaemon = true }
+        }
+
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(JdbcWorkerIdLeaseStore::class)
     fun jdbcWorkerIdLeaseStore(
         dataSource: DataSource,
+        @org.springframework.beans.factory.annotation.Qualifier("idKitScheduler")
         idKitScheduler: ScheduledExecutorService,
         properties: IdKitProperties,
         metrics: JdbcLeaseMetrics,
@@ -57,6 +65,8 @@ class JdbcIdKitAutoConfiguration {
         },
         metrics = metrics,
         heartbeatFailureThreshold = properties.heartbeatFailureThreshold,
+        clockSkewAllowanceMillis = properties.jdbc.clockSkewAllowance.toMillis(),
+        statementTimeoutSeconds = properties.backendOperationTimeout.seconds.coerceAtLeast(1).toInt(),
         clock = SystemLeaseClock,
     )
 
@@ -90,7 +100,10 @@ class JdbcIdKitAutoConfiguration {
         lease: WorkerIdLease,
         properties: IdKitProperties,
         store: JdbcWorkerIdLeaseStore,
+        @org.springframework.beans.factory.annotation.Qualifier("idKitScheduler")
         idKitScheduler: ScheduledExecutorService,
+        @org.springframework.beans.factory.annotation.Qualifier("idKitRecoveryScheduler")
+        idKitRecoveryScheduler: ScheduledExecutorService,
         recoveryMetrics: LeaseRecoveryMetrics,
     ): IdGenerator<Long> {
         val factory = { acquired: WorkerIdLease -> IdKitGeneratorFactory.create(acquired, properties) }
@@ -99,6 +112,7 @@ class JdbcIdKitAutoConfiguration {
             initialLease = lease,
             initialGenerator = factory(lease),
             scheduler = idKitScheduler,
+            recoveryScheduler = idKitRecoveryScheduler,
             recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
             acquire = { acquire(store, properties) },
             generatorFactory = factory,
@@ -154,6 +168,12 @@ class JdbcIdKitAutoConfiguration {
         }
         require(properties.heartbeatFailureThreshold in 1..2) {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
+        require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
+            "idkit.backend-operation-timeout must be positive"
+        }
+        require(!properties.jdbc.clockSkewAllowance.isNegative) {
+            "idkit.jdbc.clock-skew-allowance must not be negative"
         }
     }
 

@@ -21,6 +21,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import io.lettuce.core.RedisURI
 
 @AutoConfiguration
 @ConditionalOnClass(RedisWorkerIdLeaseStore::class)
@@ -36,10 +37,20 @@ class RedisIdKitAutoConfiguration {
             Thread(runnable, "idkit-lease-heartbeat").apply { isDaemon = true }
         }
 
+    @Bean(name = ["idKitRecoveryScheduler"], destroyMethod = "shutdown")
+    @ConditionalOnMissingBean(name = ["idKitRecoveryScheduler"])
+    fun idKitRecoveryScheduler(): ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "idkit-lease-recovery").apply { isDaemon = true }
+        }
+
     @Bean(destroyMethod = "shutdown")
     @ConditionalOnMissingBean(RedisClient::class)
-    fun idKitRedisClient(properties: IdKitProperties): RedisClient =
-        RedisClient.create(properties.redis.uri)
+    fun idKitRedisClient(properties: IdKitProperties): RedisClient {
+        val uri = RedisURI.create(properties.redis.uri)
+        uri.timeout = properties.backendOperationTimeout
+        return RedisClient.create(uri)
+    }
 
     @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(StatefulRedisConnection::class)
@@ -50,6 +61,7 @@ class RedisIdKitAutoConfiguration {
     @ConditionalOnMissingBean(RedisWorkerIdLeaseStore::class)
     fun redisWorkerIdLeaseStore(
         connection: StatefulRedisConnection<String, String>,
+        @org.springframework.beans.factory.annotation.Qualifier("idKitScheduler")
         idKitScheduler: ScheduledExecutorService,
         properties: IdKitProperties,
         metrics: RedisLeaseMetrics,
@@ -88,7 +100,10 @@ class RedisIdKitAutoConfiguration {
         lease: WorkerIdLease,
         properties: IdKitProperties,
         store: RedisWorkerIdLeaseStore,
+        @org.springframework.beans.factory.annotation.Qualifier("idKitScheduler")
         idKitScheduler: ScheduledExecutorService,
+        @org.springframework.beans.factory.annotation.Qualifier("idKitRecoveryScheduler")
+        idKitRecoveryScheduler: ScheduledExecutorService,
         recoveryMetrics: LeaseRecoveryMetrics,
     ): IdGenerator<Long> {
         val factory = { acquired: WorkerIdLease -> IdKitGeneratorFactory.create(acquired, properties) }
@@ -97,6 +112,7 @@ class RedisIdKitAutoConfiguration {
             initialLease = lease,
             initialGenerator = factory(lease),
             scheduler = idKitScheduler,
+            recoveryScheduler = idKitRecoveryScheduler,
             recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
             acquire = { acquire(store, properties) },
             generatorFactory = factory,
@@ -121,6 +137,9 @@ class RedisIdKitAutoConfiguration {
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
         require(properties.heartbeatFailureThreshold in 1..2) {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
+        require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
+            "idkit.backend-operation-timeout must be positive"
         }
         require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
         require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }

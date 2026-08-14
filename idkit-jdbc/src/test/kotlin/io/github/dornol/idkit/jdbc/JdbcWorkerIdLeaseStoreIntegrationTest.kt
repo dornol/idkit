@@ -122,6 +122,26 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
     }
 
     @Test
+    fun `backward wall clock movement cannot extend a local lease`() {
+        val now = AtomicLong(10_000L)
+        val clockedStore = JdbcWorkerIdLeaseStore(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            dialect = JdbcLeaseDialect.POSTGRESQL,
+            tableName = "idkit_test_clock_rollback_lease",
+            clock = LeaseClock { now.get() },
+        )
+        clockedStore.initialize(1, 21)
+        val lease = clockedStore.tryAcquire(0, 21, "clock-rollback", 1_000)!!
+
+        now.set(9_000L)
+        assertTrue(lease.isValid)
+        now.set(11_001L)
+        assertFalse(lease.isValid)
+        lease.close()
+    }
+
+    @Test
     fun `inspect reports lease ownership and release`() {
         store.initialize(1, 7)
         val empty = store.inspect(0, 7)

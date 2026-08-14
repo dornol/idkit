@@ -25,16 +25,25 @@ class JdbcWorkerIdLeaseStore(
     private val metrics: JdbcLeaseMetrics = NoopJdbcLeaseMetrics,
     private val clock: LeaseClock = SystemLeaseClock,
     private val heartbeatFailureThreshold: Int = 1,
+    private val clockSkewAllowanceMillis: Long = 1_000L,
+    private val statementTimeoutSeconds: Int = 5,
 ) : WorkerIdLeaseStore, AutoCloseable {
 
     private val activeLeases = ConcurrentHashMap.newKeySet<JdbcWorkerIdLease>()
     private val closed = AtomicBoolean(false)
+    /** Prevents a wall-clock rollback from extending a locally held lease. */
+    private val effectiveClock = object : LeaseClock {
+        private val last = java.util.concurrent.atomic.AtomicLong(Long.MIN_VALUE)
+        override fun millis(): Long = last.updateAndGet { maxOf(it, clock.millis()) }
+    }
 
     init {
         requireValidTableName(tableName)
         require(heartbeatFailureThreshold in 1..2) {
             "heartbeatFailureThreshold must be between 1 and 2 so the lease fails before TTL expiry"
         }
+        require(clockSkewAllowanceMillis >= 0) { "clockSkewAllowanceMillis must be >= 0" }
+        require(statementTimeoutSeconds >= 0) { "statementTimeoutSeconds must be >= 0" }
     }
 
     /**
@@ -46,10 +55,10 @@ class JdbcWorkerIdLeaseStore(
         require(workerCount > 0) { "workerCount must be > 0" }
         require(datacenterId >= 0) { "datacenterId must be >= 0" }
         dataSource.connection.use { connection ->
-            connection.prepareStatement("SELECT fencing_token FROM $tableName WHERE 1 = 0").use {
+            connection.prepareLeaseStatement("SELECT fencing_token FROM $tableName WHERE 1 = 0").use {
                 it.executeQuery().close()
             }
-            connection.prepareStatement(
+            connection.prepareLeaseStatement(
                 "SELECT COUNT(*) FROM $tableName WHERE datacenter_id = ? AND worker_id >= 0 AND worker_id < ?",
             ).use { statement ->
                 statement.setInt(1, datacenterId)
@@ -109,7 +118,7 @@ class JdbcWorkerIdLeaseStore(
             }
             connection.autoCommit = false
             try {
-                connection.prepareStatement(dialect.insertIfAbsentSql(tableName)).use { statement ->
+                connection.prepareLeaseStatement(dialect.insertIfAbsentSql(tableName)).use { statement ->
                     for (workerId in 0 until workerCount) {
                         statement.setInt(1, datacenterId)
                         statement.setInt(2, workerId)
@@ -129,9 +138,9 @@ class JdbcWorkerIdLeaseStore(
     fun inspect(workerId: Int, datacenterId: Int): JdbcLeaseStatus? {
         require(workerId >= 0) { "workerId must be >= 0" }
         require(datacenterId >= 0) { "datacenterId must be >= 0" }
-        val observedAt = clock.millis()
+        val observedAt = effectiveClock.millis()
         dataSource.connection.use { connection ->
-            connection.prepareStatement(
+            connection.prepareLeaseStatement(
                 "SELECT owner_token, lease_until, fencing_token FROM $tableName WHERE datacenter_id = ? AND worker_id = ?",
             ).use { statement ->
                 statement.setInt(1, datacenterId)
@@ -162,13 +171,13 @@ class JdbcWorkerIdLeaseStore(
         require(owner.isNotBlank()) { "owner must not be blank" }
         require(ttlMillis > 0) { "ttlMillis must be > 0" }
         val token = "$owner:${UUID.randomUUID()}"
-        val now = clock.millis()
+        val now = effectiveClock.millis()
         val until = Math.addExact(now, ttlMillis)
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
                 var currentFencingToken = 0L
-                val available = connection.prepareStatement(
+                val available = connection.prepareLeaseStatement(
                     "SELECT owner_token, lease_until, fencing_token FROM ${dialect.fromTableSql(tableName)} " +
                             "WHERE datacenter_id = ? AND worker_id = ? ${dialect.lockSuffix}"
                 ).use { statement ->
@@ -177,13 +186,16 @@ class JdbcWorkerIdLeaseStore(
                         if (!result.next()) false
                         else {
                             currentFencingToken = result.getLong(3).let { if (result.wasNull()) 0L else it }
-                            result.getString(1) == null || (result.getLong(2) < now && !result.wasNull())
+                            result.getString(1) == null ||
+                                    (result.getLong(2) < runCatching {
+                                        Math.subtractExact(now, clockSkewAllowanceMillis)
+                                    }.getOrDefault(Long.MIN_VALUE) && !result.wasNull())
                         }
                     }
                 }
                 if (!available) { connection.rollback(); metrics.acquisitionFailed(); return null }
                 val newFencingToken = Math.addExact(currentFencingToken, 1L)
-                connection.prepareStatement(
+                connection.prepareLeaseStatement(
                     "UPDATE $tableName SET owner_token = ?, lease_until = ?, fencing_token = ? " +
                             "WHERE datacenter_id = ? AND worker_id = ?"
                 ).use { statement ->
@@ -257,7 +269,7 @@ class JdbcWorkerIdLeaseStore(
 
     private fun releaseAcquiredLease(workerId: Int, datacenterId: Int, token: String) {
         dataSource.connection.use { connection ->
-            connection.prepareStatement(
+            connection.prepareLeaseStatement(
                 "UPDATE $tableName SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?",
             ).use { statement ->
                 statement.setInt(1, datacenterId)
@@ -288,14 +300,14 @@ class JdbcWorkerIdLeaseStore(
                 return valid.get()
             }
         override val remainingTtlMillis: Long
-            get() = (leaseUntilMillis - clock.millis()).coerceAtLeast(0L)
+            get() = (leaseUntilMillis - effectiveClock.millis()).coerceAtLeast(0L)
 
         private fun renew() {
             if (!valid.get()) return
             try {
-                val until = Math.addExact(clock.millis(), ttlMillis)
+                val until = Math.addExact(effectiveClock.millis(), ttlMillis)
                 dataSource.connection.use { connection ->
-                    connection.prepareStatement(
+                    connection.prepareLeaseStatement(
                         "UPDATE $tableName SET lease_until = ? WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?"
                     ).use { statement ->
                         statement.setLong(1, until); statement.setInt(2, datacenterId); statement.setInt(3, workerId); statement.setString(4, token)
@@ -337,8 +349,8 @@ class JdbcWorkerIdLeaseStore(
             }
             heartbeat.cancel(false)
             runCatching {
-                dataSource.connection.use { connection ->
-                    connection.prepareStatement("UPDATE $tableName SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?").use { statement ->
+                    dataSource.connection.use { connection ->
+                        connection.prepareLeaseStatement("UPDATE $tableName SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?").use { statement ->
                         statement.setInt(1, datacenterId); statement.setInt(2, workerId); statement.setString(3, token); statement.executeUpdate()
                     }
                 }
@@ -353,6 +365,9 @@ class JdbcWorkerIdLeaseStore(
         if (!closed.compareAndSet(false, true)) return
         activeLeases.toList().forEach { it.close() }
     }
+
+    private fun java.sql.Connection.prepareLeaseStatement(sql: String): java.sql.PreparedStatement =
+        prepareStatement(sql).also { if (statementTimeoutSeconds > 0) it.queryTimeout = statementTimeoutSeconds }
 
     private companion object {
         fun requireValidTableName(value: String) {

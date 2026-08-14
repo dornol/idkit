@@ -13,6 +13,7 @@ class IdKitProperties {
     var owner: String = defaultOwner()
     var leaseTtl: Duration = Duration.ofSeconds(30)
     var heartbeatFailureThreshold: Int = 1
+    var backendOperationTimeout: Duration = Duration.ofSeconds(5)
     var acquisitionAttempts: Int = 3
     var acquisitionRetryDelay: Duration = Duration.ofSeconds(1)
     var recovery: Recovery = Recovery()
@@ -57,6 +58,8 @@ class IdKitProperties {
         var validateSchema: Boolean = false
         var dialect: Dialect = Dialect.POSTGRESQL
         var tableName: String = "idkit_worker_lease"
+        /** Extra delay before another process may reuse a row, absorbing clock skew. */
+        var clockSkewAllowance: Duration = Duration.ofSeconds(1)
     }
 
     class Redis {
