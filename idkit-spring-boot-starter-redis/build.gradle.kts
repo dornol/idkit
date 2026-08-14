@@ -13,6 +13,9 @@ repositories { mavenCentral() }
 dependencies {
     api(project(":idkit-spring-boot-autoconfigure"))
     api(project(":idkit-redis"))
+    testImplementation(platform(libs.junitBom))
+    testImplementation(libs.junitJupiter)
+    testRuntimeOnly(libs.junitLauncher)
 }
 
 kotlin { compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }

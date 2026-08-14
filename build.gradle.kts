@@ -44,6 +44,19 @@ tasks.test {
 // has a stable baseline across all supported databases.
 tasks.named("check") {
     dependsOn("jacocoTestReport")
+    dependsOn("jacocoTestCoverageVerification")
+}
+
+tasks.withType<org.gradle.testing.jacoco.tasks.JacocoCoverageVerification>().configureEach {
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.75".toBigDecimal()
+            }
+        }
+    }
 }
 
 subprojects {
@@ -58,6 +71,18 @@ subprojects {
     }
     tasks.matching { it.name == "check" }.configureEach {
         dependsOn("jacocoTestReport")
+        dependsOn("jacocoTestCoverageVerification")
+    }
+    tasks.withType<org.gradle.testing.jacoco.tasks.JacocoCoverageVerification>().configureEach {
+        violationRules {
+            rule {
+                limit {
+                    counter = "LINE"
+                    value = "COVEREDRATIO"
+                    minimum = "0.75".toBigDecimal()
+                }
+            }
+        }
     }
 }
 

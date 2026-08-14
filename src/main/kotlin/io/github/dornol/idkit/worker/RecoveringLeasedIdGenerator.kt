@@ -7,6 +7,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.function.Function
+import java.util.function.Supplier
 
 /**
  * Reacquires a worker lease after it expires and atomically swaps to a generator built for the
@@ -21,6 +23,29 @@ class RecoveringLeasedIdGenerator<T>(
     private val generatorFactory: (WorkerIdLease) -> IdGenerator<T>,
     private val metrics: LeaseRecoveryMetrics = NoopLeaseRecoveryMetrics,
 ) : IdGenerator<T>, LeaseRecoveryStatus, AutoCloseable {
+    companion object {
+        /** Java-friendly factory for configuring automatic lease recovery. */
+        @JvmStatic
+        @JvmOverloads
+        fun <T> create(
+            initialLease: WorkerIdLease,
+            initialGenerator: IdGenerator<T>,
+            scheduler: ScheduledExecutorService,
+            recoveryRetryDelayMillis: Long,
+            acquire: Supplier<WorkerIdLease>,
+            generatorFactory: Function<WorkerIdLease, IdGenerator<T>>,
+            metrics: LeaseRecoveryMetrics = NoopLeaseRecoveryMetrics,
+        ): RecoveringLeasedIdGenerator<T> = RecoveringLeasedIdGenerator(
+            initialLease = initialLease,
+            initialGenerator = initialGenerator,
+            scheduler = scheduler,
+            recoveryRetryDelayMillis = recoveryRetryDelayMillis,
+            acquire = acquire::get,
+            generatorFactory = generatorFactory::apply,
+            metrics = metrics,
+        )
+    }
+
     private val closed = AtomicBoolean(false)
     private val recovering = AtomicBoolean(false)
     private val state = AtomicReference(State(LeasedIdGenerator(initialGenerator, initialLease)))

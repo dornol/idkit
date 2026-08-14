@@ -128,6 +128,9 @@ idkit:
   heartbeat-failure-threshold: 1
   acquisition-attempts: 3
   acquisition-retry-delay: 1s
+  recovery:
+    enabled: true
+    retry-delay: 1s
   metrics:
     enabled: true
     prefix: idkit.lease
@@ -178,6 +181,8 @@ immediately failing startup. Once a lease is lost after startup, ID generation r
 set `idkit.recovery.enabled: true` (the default) to periodically reacquire the lease and rebuild
 the generator after the backend recovers. `idkit.recovery.retry-delay` controls that background
 retry interval. During recovery, ID requests fail closed until a new lease is confirmed.
+For Java callers, use `RecoveringLeasedIdGenerator.create(...)` with
+`Supplier<WorkerIdLease>` and `Function<WorkerIdLease, IdGenerator<T>>` callbacks.
 automatic reuse of the same worker identity is intentionally not performed.
 
 ## Quick start

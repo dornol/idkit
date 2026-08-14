@@ -3,6 +3,7 @@ package io.github.dornol.idkit.spring.boot
 import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.flake.FlakeIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
+import io.github.dornol.idkit.worker.LeaseRecoveryStatus
 import org.springframework.boot.actuate.health.HealthIndicator
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -82,6 +83,37 @@ class IdKitAutoConfigurationTest {
             .withPropertyValues("idkit.health.enabled=true")
             .run { context ->
                 assertTrue(context.getBean(HealthIndicator::class.java) === custom)
+            }
+    }
+
+    @Test
+    fun `health exposes recovery details while recovery is in progress`() {
+        val lease = object : WorkerIdLease {
+            override val workerId = 1
+            override val datacenterId = 2
+            override val isValid = false
+            override fun close() = Unit
+        }
+        val status = object : LeaseRecoveryStatus {
+            override val currentLease = lease
+            override val isRecovering = true
+            override val lastRecoveryFailure = IllegalStateException("backend unavailable")
+            override val recoveryAttempts = 3L
+            override val recoveryFailures = 2L
+        }
+
+        ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(IdKitHealthAutoConfiguration::class.java))
+            .withBean(WorkerIdLease::class.java, Supplier { lease })
+            .withBean(LeaseRecoveryStatus::class.java, Supplier { status })
+            .withPropertyValues("idkit.health.enabled=true")
+            .run { context ->
+                val health = context.getBean(HealthIndicator::class.java).health()
+                assertEquals("DOWN", health.status.code)
+                assertEquals("worker identity lease recovery is in progress", health.details["reason"])
+                assertEquals(3L, health.details["recoveryAttempts"])
+                assertEquals(2L, health.details["recoveryFailures"])
+                assertEquals("backend unavailable", health.details["lastRecoveryFailure"])
             }
     }
 }

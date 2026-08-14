@@ -11,7 +11,7 @@ import io.github.dornol.idkit.IdGenerator
 class LeasedIdGenerator<T>(
     private val delegate: IdGenerator<T>,
     internal val lease: WorkerIdLease,
-) : IdGenerator<T> {
+) : IdGenerator<T>, AutoCloseable {
 
     override fun nextId(): T {
         requireValidLease()
@@ -28,5 +28,9 @@ class LeasedIdGenerator<T>(
         check(lease.isValid) {
             "Worker identity lease is no longer valid; refusing to generate an ID"
         }
+    }
+
+    override fun close() {
+        lease.close()
     }
 }

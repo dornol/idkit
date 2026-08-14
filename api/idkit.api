@@ -327,8 +327,9 @@ public abstract interface class io/github/dornol/idkit/worker/LeaseRecoveryStatu
 	public abstract fun isRecovering ()Z
 }
 
-public final class io/github/dornol/idkit/worker/LeasedIdGenerator : io/github/dornol/idkit/IdGenerator {
+public final class io/github/dornol/idkit/worker/LeasedIdGenerator : io/github/dornol/idkit/IdGenerator, java/lang/AutoCloseable {
 	public fun <init> (Lio/github/dornol/idkit/IdGenerator;Lio/github/dornol/idkit/worker/WorkerIdLease;)V
+	public fun close ()V
 	public fun nextId ()Ljava/lang/Object;
 	public fun nextIds (I)Ljava/util/List;
 }
@@ -342,9 +343,12 @@ public final class io/github/dornol/idkit/worker/NoopLeaseRecoveryMetrics : io/g
 }
 
 public final class io/github/dornol/idkit/worker/RecoveringLeasedIdGenerator : io/github/dornol/idkit/IdGenerator, io/github/dornol/idkit/worker/LeaseRecoveryStatus, java/lang/AutoCloseable {
+	public static final field Companion Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator$Companion;
 	public fun <init> (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lio/github/dornol/idkit/worker/LeaseRecoveryMetrics;)V
 	public synthetic fun <init> (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lio/github/dornol/idkit/worker/LeaseRecoveryMetrics;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
+	public static final fun create (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLjava/util/function/Supplier;Ljava/util/function/Function;)Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator;
+	public static final fun create (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLjava/util/function/Supplier;Ljava/util/function/Function;Lio/github/dornol/idkit/worker/LeaseRecoveryMetrics;)Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator;
 	public fun getCurrentLease ()Lio/github/dornol/idkit/worker/WorkerIdLease;
 	public fun getLastRecoveryFailure ()Ljava/lang/Throwable;
 	public fun getRecoveryAttempts ()J
@@ -352,6 +356,12 @@ public final class io/github/dornol/idkit/worker/RecoveringLeasedIdGenerator : i
 	public fun isRecovering ()Z
 	public fun nextId ()Ljava/lang/Object;
 	public fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/worker/RecoveringLeasedIdGenerator$Companion {
+	public final fun create (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLjava/util/function/Supplier;Ljava/util/function/Function;)Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator;
+	public final fun create (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLjava/util/function/Supplier;Ljava/util/function/Function;Lio/github/dornol/idkit/worker/LeaseRecoveryMetrics;)Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator;
+	public static synthetic fun create$default (Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator$Companion;Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLjava/util/function/Supplier;Ljava/util/function/Function;Lio/github/dornol/idkit/worker/LeaseRecoveryMetrics;ILjava/lang/Object;)Lio/github/dornol/idkit/worker/RecoveringLeasedIdGenerator;
 }
 
 public final class io/github/dornol/idkit/worker/StaleFencingTokenException : java/lang/IllegalStateException {
