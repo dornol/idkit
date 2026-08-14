@@ -26,7 +26,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import javax.sql.DataSource
 
-@AutoConfiguration(after = [DataSourceAutoConfiguration::class])
+@AutoConfiguration(
+    after = [DataSourceAutoConfiguration::class],
+    // Spring Boot 4 moved DataSourceAutoConfiguration to org.springframework.boot.jdbc.autoconfigure.
+    // Keep the name-based ordering so Docker Compose-provided DataSources are available before
+    // the @ConditionalOnBean checks below are evaluated on both Boot 3 and Boot 4.
+    afterName = ["org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration"],
+)
 @ConditionalOnClass(JdbcWorkerIdLeaseStore::class)
 @ConditionalOnProperty(prefix = "idkit", name = ["backend"], havingValue = "jdbc")
 @EnableConfigurationProperties(IdKitProperties::class)
