@@ -7,6 +7,7 @@ import io.github.dornol.idkit.jdbc.JdbcLeaseMetrics
 import io.github.dornol.idkit.jdbc.JdbcWorkerIdLeaseStore
 import io.github.dornol.idkit.jdbc.NoopJdbcLeaseMetrics
 import io.github.dornol.idkit.worker.LeasedIdGenerator
+import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator
 import io.github.dornol.idkit.worker.SystemLeaseClock
 import io.github.dornol.idkit.worker.WorkerIdLease
 import org.slf4j.LoggerFactory
@@ -77,15 +78,23 @@ class JdbcIdKitAutoConfiguration {
         return acquire(store, properties)
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(IdGenerator::class)
     fun idGenerator(
         lease: WorkerIdLease,
         properties: IdKitProperties,
+        store: JdbcWorkerIdLeaseStore,
+        idKitScheduler: ScheduledExecutorService,
     ): IdGenerator<Long> {
-        return LeasedIdGenerator(
-            IdKitGeneratorFactory.create(lease, properties),
-            lease,
+        val factory = { acquired: WorkerIdLease -> IdKitGeneratorFactory.create(acquired, properties) }
+        if (!properties.recovery.enabled) return LeasedIdGenerator(factory(lease), lease)
+        return RecoveringLeasedIdGenerator(
+            initialLease = lease,
+            initialGenerator = factory(lease),
+            scheduler = idKitScheduler,
+            recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
+            acquire = { acquire(store, properties) },
+            generatorFactory = factory,
         )
     }
 
@@ -132,6 +141,9 @@ class JdbcIdKitAutoConfiguration {
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
         require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
         require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
+        require(!properties.recovery.retryDelay.isZero && !properties.recovery.retryDelay.isNegative) {
+            "idkit.recovery.retry-delay must be positive"
+        }
         require(properties.heartbeatFailureThreshold in 1..2) {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
         }

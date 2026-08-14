@@ -6,6 +6,7 @@ import io.github.dornol.idkit.redis.RedisLeaseFailureListener
 import io.github.dornol.idkit.redis.RedisLeaseMetrics
 import io.github.dornol.idkit.redis.RedisWorkerIdLeaseStore
 import io.github.dornol.idkit.worker.LeasedIdGenerator
+import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import io.lettuce.core.RedisClient
 import io.lettuce.core.api.StatefulRedisConnection
@@ -75,15 +76,23 @@ class RedisIdKitAutoConfiguration {
         return acquire(store, properties)
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
     @ConditionalOnMissingBean(IdGenerator::class)
     fun idGenerator(
         lease: WorkerIdLease,
         properties: IdKitProperties,
+        store: RedisWorkerIdLeaseStore,
+        idKitScheduler: ScheduledExecutorService,
     ): IdGenerator<Long> {
-        return LeasedIdGenerator(
-            IdKitGeneratorFactory.create(lease, properties),
-            lease,
+        val factory = { acquired: WorkerIdLease -> IdKitGeneratorFactory.create(acquired, properties) }
+        if (!properties.recovery.enabled) return LeasedIdGenerator(factory(lease), lease)
+        return RecoveringLeasedIdGenerator(
+            initialLease = lease,
+            initialGenerator = factory(lease),
+            scheduler = idKitScheduler,
+            recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
+            acquire = { acquire(store, properties) },
+            generatorFactory = factory,
         )
     }
 
@@ -107,5 +116,8 @@ class RedisIdKitAutoConfiguration {
         }
         require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
         require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
+        require(!properties.recovery.retryDelay.isZero && !properties.recovery.retryDelay.isNegative) {
+            "idkit.recovery.retry-delay must be positive"
+        }
     }
 }

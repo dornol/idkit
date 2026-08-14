@@ -173,6 +173,9 @@ known local deadline, the lease is invalidated locally and ID generation stops.
 `acquisition-attempts` and `acquisition-retry-delay` apply only while the application is starting.
 They allow a short database/Redis outage or a worker slot that is about to expire to recover without
 immediately failing startup. Once a lease is lost after startup, ID generation remains fail-closed;
+set `idkit.recovery.enabled: true` (the default) to periodically reacquire the lease and rebuild
+the generator after the backend recovers. `idkit.recovery.retry-delay` controls that background
+retry interval. During recovery, ID requests fail closed until a new lease is confirmed.
 automatic reuse of the same worker identity is intentionally not performed.
 
 ## Quick start

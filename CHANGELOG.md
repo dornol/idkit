@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable consecutive heartbeat failure threshold for JDBC/Redis lease stores.
 - JDBC schema validation and dialect-specific migration SQL preview support.
 - Bounded startup acquisition retries with configurable delay for JDBC and Redis backends.
+- Optional automatic lease recovery that reacquires a worker identity and rebuilds the generator
+  after lease loss.
 
 ### Changed
 

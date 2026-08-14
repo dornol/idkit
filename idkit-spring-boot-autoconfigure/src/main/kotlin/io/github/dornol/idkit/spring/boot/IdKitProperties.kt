@@ -15,6 +15,7 @@ class IdKitProperties {
     var heartbeatFailureThreshold: Int = 1
     var acquisitionAttempts: Int = 3
     var acquisitionRetryDelay: Duration = Duration.ofSeconds(1)
+    var recovery: Recovery = Recovery()
     var metrics: Metrics = Metrics()
     var generator: Generator = Generator()
     var jdbc: Jdbc = Jdbc()
@@ -25,6 +26,11 @@ class IdKitProperties {
     class Metrics {
         var enabled: Boolean = true
         var prefix: String = "idkit.lease"
+    }
+
+    class Recovery {
+        var enabled: Boolean = true
+        var retryDelay: Duration = Duration.ofSeconds(1)
     }
 
     class Generator {

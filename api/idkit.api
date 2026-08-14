@@ -312,8 +312,25 @@ public abstract interface class io/github/dornol/idkit/worker/LeaseClock {
 	public abstract fun millis ()J
 }
 
+public abstract interface class io/github/dornol/idkit/worker/LeaseRecoveryStatus {
+	public abstract fun getCurrentLease ()Lio/github/dornol/idkit/worker/WorkerIdLease;
+	public abstract fun getLastRecoveryFailure ()Ljava/lang/Throwable;
+	public abstract fun isRecovering ()Z
+}
+
 public final class io/github/dornol/idkit/worker/LeasedIdGenerator : io/github/dornol/idkit/IdGenerator {
 	public fun <init> (Lio/github/dornol/idkit/IdGenerator;Lio/github/dornol/idkit/worker/WorkerIdLease;)V
+	public fun nextId ()Ljava/lang/Object;
+	public fun nextIds (I)Ljava/util/List;
+}
+
+public final class io/github/dornol/idkit/worker/RecoveringLeasedIdGenerator : io/github/dornol/idkit/IdGenerator, io/github/dornol/idkit/worker/LeaseRecoveryStatus, java/lang/AutoCloseable {
+	public fun <init> (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Lio/github/dornol/idkit/worker/WorkerIdLease;Lio/github/dornol/idkit/IdGenerator;Ljava/util/concurrent/ScheduledExecutorService;JLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun getCurrentLease ()Lio/github/dornol/idkit/worker/WorkerIdLease;
+	public fun getLastRecoveryFailure ()Ljava/lang/Throwable;
+	public fun isRecovering ()Z
 	public fun nextId ()Ljava/lang/Object;
 	public fun nextIds (I)Ljava/util/List;
 }

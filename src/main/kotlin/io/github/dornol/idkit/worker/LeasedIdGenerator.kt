@@ -10,7 +10,7 @@ import io.github.dornol.idkit.IdGenerator
  */
 class LeasedIdGenerator<T>(
     private val delegate: IdGenerator<T>,
-    private val lease: WorkerIdLease,
+    internal val lease: WorkerIdLease,
 ) : IdGenerator<T> {
 
     override fun nextId(): T {
