@@ -396,9 +396,11 @@ try {
 }
 ```
 
-If the heartbeat cannot renew the lease, `LeasedIdGenerator` refuses subsequent ID requests.
-Applications should treat that exception as a process health failure and obtain a new lease after
-recovery.
+If a heartbeat fails because the backend connection is temporarily unavailable, the last
+confirmed local TTL remains usable; ID generation stops when that deadline expires. A definitive
+ownership-loss response still follows the configured failure threshold. Once the lease is
+invalidated, `LeasedIdGenerator` refuses subsequent ID requests. Applications should treat that
+exception as a process health failure and obtain a new lease after recovery.
 
 ### Fencing downstream operations
 

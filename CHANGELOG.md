@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   TTL can normally expire.
 - Lease validity now fails closed at the locally known TTL deadline even if the heartbeat scheduler
   is delayed or stopped.
+- Transient heartbeat connection failures now keep the last confirmed lease usable until its local
+  TTL deadline; definitive ownership-loss responses still follow the configured failure threshold.
 
 ## [3.0.0] - 2026-04-23
 

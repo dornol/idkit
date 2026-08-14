@@ -14,8 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Redis-backed worker identity leases.
  *
  * The Redis connection is used only during acquisition, heartbeat, and close. ID generation
- * itself remains local and never performs a Redis round trip. A failed heartbeat invalidates the
- * lease; wrap the generator in [io.github.dornol.idkit.worker.LeasedIdGenerator] to fail closed.
+ * itself remains local and never performs a Redis round trip. A definitive ownership loss or an
+ * expired local deadline invalidates the lease; wrap the generator in
+ * [io.github.dornol.idkit.worker.LeasedIdGenerator] to fail closed.
  *
  * The supplied [RedisCommands] connection must be safe to use from the heartbeat thread. Lettuce
  * synchronous connections satisfy this requirement when commands are not blocking.
@@ -208,7 +209,10 @@ class RedisWorkerIdLeaseStore(
                 }
             } catch (failure: RuntimeException) {
                 metrics.heartbeatFailed()
-                if (heartbeatFailures.incrementAndGet() >= heartbeatFailureThreshold) invalidate(failure)
+                // A connection exception does not prove that ownership was lost. Keep the lease
+                // usable until the last confirmed local deadline; isValid (and this heartbeat
+                // loop) will fail closed once that deadline has elapsed.
+                if (remainingTtlMillis <= 0) invalidate(failure)
             }
         }
 

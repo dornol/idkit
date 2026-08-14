@@ -313,7 +313,10 @@ class JdbcWorkerIdLeaseStore(
                 }
             } catch (failure: Exception) {
                 metrics.heartbeatFailed()
-                if (heartbeatFailures.incrementAndGet() >= heartbeatFailureThreshold) invalidate(failure)
+                // A connection exception does not prove that ownership was lost. Keep the lease
+                // usable until the last confirmed local deadline; isValid (and this heartbeat
+                // loop) will fail closed once that deadline has elapsed.
+                if (remainingTtlMillis <= 0) invalidate(failure)
             }
         }
 
