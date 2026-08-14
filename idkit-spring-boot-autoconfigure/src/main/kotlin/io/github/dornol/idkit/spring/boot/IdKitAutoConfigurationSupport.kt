@@ -38,7 +38,7 @@ internal object IdKitAutoConfigurationSupport {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
         }
         validateHeartbeatInterval(properties)
-        require(properties.backendOperationTimeout.isPositive()) {
+        require(properties.backendOperationTimeout.isPositiveDuration()) {
             "idkit.backend-operation-timeout must be positive"
         }
         require(!properties.startupJitter.isNegative) {
