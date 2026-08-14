@@ -15,6 +15,8 @@ class RecoveringLeasedIdGeneratorTest {
         val scheduler = Executors.newSingleThreadScheduledExecutor()
         val first = TestLease(1)
         val replacement = TestLease(2)
+        val recoveryAttempts = AtomicInteger()
+        val recoverySuccesses = AtomicInteger()
         val generator = RecoveringLeasedIdGenerator(
             initialLease = first,
             initialGenerator = generatorFor(first),
@@ -22,6 +24,12 @@ class RecoveringLeasedIdGeneratorTest {
             recoveryRetryDelayMillis = 20,
             acquire = { replacement },
             generatorFactory = ::generatorFor,
+            metrics = object : LeaseRecoveryMetrics {
+                override fun recoveryAttempted() { recoveryAttempts.incrementAndGet() }
+                override fun recoverySucceeded() { recoverySuccesses.incrementAndGet() }
+                override fun recoveryFailed() = Unit
+                override fun recoveryActive(active: Boolean) = Unit
+            },
         )
 
         try {
@@ -30,6 +38,8 @@ class RecoveringLeasedIdGeneratorTest {
             assertThrows<IllegalStateException> { generator.nextId() }
             eventually { generator.currentLease === replacement }
             assertEquals(2, generator.nextId())
+            assertEquals(1, recoveryAttempts.get())
+            assertEquals(1, recoverySuccesses.get())
         } finally {
             generator.close()
             scheduler.shutdownNow()

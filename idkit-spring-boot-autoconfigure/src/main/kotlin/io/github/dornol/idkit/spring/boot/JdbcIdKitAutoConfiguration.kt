@@ -7,6 +7,8 @@ import io.github.dornol.idkit.jdbc.JdbcLeaseMetrics
 import io.github.dornol.idkit.jdbc.JdbcWorkerIdLeaseStore
 import io.github.dornol.idkit.jdbc.NoopJdbcLeaseMetrics
 import io.github.dornol.idkit.worker.LeasedIdGenerator
+import io.github.dornol.idkit.worker.LeaseRecoveryMetrics
+import io.github.dornol.idkit.worker.NoopLeaseRecoveryMetrics
 import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator
 import io.github.dornol.idkit.worker.SystemLeaseClock
 import io.github.dornol.idkit.worker.WorkerIdLease
@@ -62,6 +64,10 @@ class JdbcIdKitAutoConfiguration {
     @ConditionalOnMissingBean(JdbcLeaseMetrics::class)
     fun jdbcLeaseMetrics(): JdbcLeaseMetrics = NoopJdbcLeaseMetrics
 
+    @Bean
+    @ConditionalOnMissingBean(LeaseRecoveryMetrics::class)
+    fun leaseRecoveryMetrics(): LeaseRecoveryMetrics = NoopLeaseRecoveryMetrics
+
     @Bean(destroyMethod = "close")
     fun idKitWorkerIdLease(
         store: JdbcWorkerIdLeaseStore,
@@ -85,6 +91,7 @@ class JdbcIdKitAutoConfiguration {
         properties: IdKitProperties,
         store: JdbcWorkerIdLeaseStore,
         idKitScheduler: ScheduledExecutorService,
+        recoveryMetrics: LeaseRecoveryMetrics,
     ): IdGenerator<Long> {
         val factory = { acquired: WorkerIdLease -> IdKitGeneratorFactory.create(acquired, properties) }
         if (!properties.recovery.enabled) return LeasedIdGenerator(factory(lease), lease)
@@ -95,6 +102,7 @@ class JdbcIdKitAutoConfiguration {
             recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
             acquire = { acquire(store, properties) },
             generatorFactory = factory,
+            metrics = recoveryMetrics,
         )
     }
 

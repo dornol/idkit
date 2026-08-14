@@ -3,6 +3,7 @@ package io.github.dornol.idkit.spring.boot
 import io.github.dornol.idkit.jdbc.JdbcLeaseMetrics
 import io.github.dornol.idkit.jdbc.MicrometerJdbcLeaseMetrics
 import io.github.dornol.idkit.jdbc.NoopJdbcLeaseMetrics
+import io.github.dornol.idkit.worker.LeaseRecoveryMetrics
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
@@ -25,5 +26,16 @@ class JdbcMicrometerIdKitAutoConfiguration {
         MicrometerJdbcLeaseMetrics(registry, "\${properties.metrics.prefix}.jdbc.lease")
     } else {
         NoopJdbcLeaseMetrics
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(LeaseRecoveryMetrics::class)
+    fun leaseRecoveryMetrics(
+        registry: MeterRegistry,
+        properties: IdKitProperties,
+    ): LeaseRecoveryMetrics = if (properties.metrics.enabled) {
+        MicrometerLeaseRecoveryMetrics(registry, "${properties.metrics.prefix}.recovery")
+    } else {
+        io.github.dornol.idkit.worker.NoopLeaseRecoveryMetrics
     }
 }

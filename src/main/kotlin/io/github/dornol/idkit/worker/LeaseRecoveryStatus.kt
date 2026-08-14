@@ -5,4 +5,6 @@ interface LeaseRecoveryStatus {
     val currentLease: WorkerIdLease
     val isRecovering: Boolean
     val lastRecoveryFailure: Throwable?
+    val recoveryAttempts: Long
+    val recoveryFailures: Long
 }

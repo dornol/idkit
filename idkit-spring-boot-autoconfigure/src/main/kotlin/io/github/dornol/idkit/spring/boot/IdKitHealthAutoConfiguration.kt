@@ -33,6 +33,11 @@ class IdKitHealthAutoConfiguration {
                     .withDetail("datacenterId", currentLease.datacenterId)
                     .withDetail("fencingToken", currentLease.fencingToken)
                 status?.let { builder.withDetail("recovering", it.isRecovering) }
+                status?.let {
+                    builder.withDetail("recoveryAttempts", it.recoveryAttempts)
+                    builder.withDetail("recoveryFailures", it.recoveryFailures)
+                    it.lastRecoveryFailure?.message?.let { message -> builder.withDetail("lastRecoveryFailure", message) }
+                }
                 remainingTtl?.let { builder.withDetail("remainingTtlMillis", it) }
                 builder.build()
             } else {
@@ -45,6 +50,13 @@ class IdKitHealthAutoConfiguration {
                         else if (!currentLease.isValid) "worker identity lease is no longer valid"
                         else "worker identity lease TTL has elapsed",
                     )
+                    .apply {
+                        status?.let {
+                            withDetail("recoveryAttempts", it.recoveryAttempts)
+                            withDetail("recoveryFailures", it.recoveryFailures)
+                            it.lastRecoveryFailure?.message?.let { message -> withDetail("lastRecoveryFailure", message) }
+                        }
+                    }
                     .build()
             }
         }

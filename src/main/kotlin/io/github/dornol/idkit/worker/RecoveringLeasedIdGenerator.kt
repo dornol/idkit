@@ -5,6 +5,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -18,11 +19,14 @@ class RecoveringLeasedIdGenerator<T>(
     recoveryRetryDelayMillis: Long = 1_000L,
     private val acquire: () -> WorkerIdLease,
     private val generatorFactory: (WorkerIdLease) -> IdGenerator<T>,
+    private val metrics: LeaseRecoveryMetrics = NoopLeaseRecoveryMetrics,
 ) : IdGenerator<T>, LeaseRecoveryStatus, AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val recovering = AtomicBoolean(false)
     private val state = AtomicReference(State(LeasedIdGenerator(initialGenerator, initialLease)))
     private val lastFailure = AtomicReference<Throwable?>(null)
+    private val attempts = AtomicLong()
+    private val failures = AtomicLong()
     private val recovery: ScheduledFuture<*>
 
     init {
@@ -44,6 +48,12 @@ class RecoveringLeasedIdGenerator<T>(
     override val lastRecoveryFailure: Throwable?
         get() = lastFailure.get()
 
+    override val recoveryAttempts: Long
+        get() = attempts.get()
+
+    override val recoveryFailures: Long
+        get() = failures.get()
+
     override fun nextId(): T {
         check(!closed.get()) { "Recovering ID generator is already closed" }
         val current = state.get()
@@ -63,6 +73,9 @@ class RecoveringLeasedIdGenerator<T>(
         if (closed.get()) return
         val current = state.get()
         if (current.generator.lease.isValid || !recovering.compareAndSet(false, true)) return
+        attempts.incrementAndGet()
+        metrics.recoveryAttempted()
+        metrics.recoveryActive(true)
         try {
             val newLease = acquire()
             try {
@@ -70,14 +83,18 @@ class RecoveringLeasedIdGenerator<T>(
                 val previous = state.getAndSet(replacement)
                 previous.generator.lease.close()
                 lastFailure.set(null)
+                metrics.recoverySucceeded()
             } catch (failure: Exception) {
                 newLease.close()
                 throw failure
             }
         } catch (failure: Exception) {
+            failures.incrementAndGet()
+            metrics.recoveryFailed()
             lastFailure.set(failure)
         } finally {
             recovering.set(false)
+            metrics.recoveryActive(false)
         }
     }
 

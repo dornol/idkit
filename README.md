@@ -157,6 +157,8 @@ worker, and sequence bit layout across the 64-bit ID. When Spring Boot Actuator 
 `idkitHealthIndicator` reports the lease state; when Micrometer is present, lease lifecycle
 counters and the active-lease gauge are registered automatically. Both integrations can be
 disabled with `idkit.health.enabled: false` or `idkit.metrics.enabled: false`.
+Automatic recovery adds `idkit.lease.recovery.attempted`, `.succeeded`, `.failed`, and `.active`
+metrics when enabled.
 
 Set `idkit.jdbc.validate-schema: true` when migrations create the table. This checks the fencing
 column and expected worker rows without executing DDL. For migration tooling, call

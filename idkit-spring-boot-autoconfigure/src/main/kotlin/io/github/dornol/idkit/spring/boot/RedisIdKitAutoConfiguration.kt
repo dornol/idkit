@@ -6,6 +6,8 @@ import io.github.dornol.idkit.redis.RedisLeaseFailureListener
 import io.github.dornol.idkit.redis.RedisLeaseMetrics
 import io.github.dornol.idkit.redis.RedisWorkerIdLeaseStore
 import io.github.dornol.idkit.worker.LeasedIdGenerator
+import io.github.dornol.idkit.worker.LeaseRecoveryMetrics
+import io.github.dornol.idkit.worker.NoopLeaseRecoveryMetrics
 import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import io.lettuce.core.RedisClient
@@ -66,6 +68,10 @@ class RedisIdKitAutoConfiguration {
     @ConditionalOnMissingBean(RedisLeaseMetrics::class)
     fun redisLeaseMetrics(): RedisLeaseMetrics = NoopRedisLeaseMetrics
 
+    @Bean
+    @ConditionalOnMissingBean(LeaseRecoveryMetrics::class)
+    fun leaseRecoveryMetrics(): LeaseRecoveryMetrics = NoopLeaseRecoveryMetrics
+
     @Bean(destroyMethod = "close")
     fun idKitWorkerIdLease(
         store: RedisWorkerIdLeaseStore,
@@ -83,6 +89,7 @@ class RedisIdKitAutoConfiguration {
         properties: IdKitProperties,
         store: RedisWorkerIdLeaseStore,
         idKitScheduler: ScheduledExecutorService,
+        recoveryMetrics: LeaseRecoveryMetrics,
     ): IdGenerator<Long> {
         val factory = { acquired: WorkerIdLease -> IdKitGeneratorFactory.create(acquired, properties) }
         if (!properties.recovery.enabled) return LeasedIdGenerator(factory(lease), lease)
@@ -93,6 +100,7 @@ class RedisIdKitAutoConfiguration {
             recoveryRetryDelayMillis = properties.recovery.retryDelay.toMillis(),
             acquire = { acquire(store, properties) },
             generatorFactory = factory,
+            metrics = recoveryMetrics,
         )
     }
 
