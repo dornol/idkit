@@ -64,6 +64,16 @@ IdGenerator<Long> generator = IdKitGenerators.flake(
 long id = generator.nextId();
 ```
 
+The same Java-friendly factory also exposes the built-in string and UUID generators:
+
+```java
+import java.util.UUID;
+
+IdGenerator<String> ulids = IdKitGenerators.ulid();
+IdGenerator<String> nanoIds = IdKitGenerators.nanoId();
+IdGenerator<UUID> uuidV7 = IdKitGenerators.uuidV7();
+```
+
 When a distributed worker lease is already acquired, use the lease-aware factory so ID
 generation fails closed after lease loss:
 
@@ -115,6 +125,7 @@ idkit:
   datacenter-id: 0
   owner: ${HOSTNAME:local}
   lease-ttl: 30s
+  heartbeat-failure-threshold: 1
   metrics:
     enabled: true
     prefix: idkit.lease
@@ -135,12 +146,18 @@ idkit:
 
 For Redis, set `idkit.backend: redis` and configure `idkit.redis.uri` and
 `idkit.redis.key-prefix`. For JDBC, setting `auto-initialize: true` creates the lease table and
-worker rows at startup; set it to `false` when the schema is managed separately. `snowflake`
+worker rows at startup. It defaults to `false`, which is safer for production environments where
+schema changes are managed separately; enable it explicitly for local development or when the
+application has the required DDL permissions. `snowflake`
 keeps the standard 41/5/5 layout, while `flake` applies the configured timestamp, datacenter,
 worker, and sequence bit layout across the 64-bit ID. When Spring Boot Actuator is present,
 `idkitHealthIndicator` reports the lease state; when Micrometer is present, lease lifecycle
 counters and the active-lease gauge are registered automatically. Both integrations can be
 disabled with `idkit.health.enabled: false` or `idkit.metrics.enabled: false`.
+
+`heartbeat-failure-threshold` controls how many consecutive renewal failures are tolerated before
+the lease is invalidated. Keep it low enough that the lease TTL cannot expire before the next
+retry; the default `1` fails closed immediately.
 
 ## Quick start
 

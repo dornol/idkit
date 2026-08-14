@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Java-friendly factories for UUID v7, ULID, and NanoID generators.
+- Optional lease remaining-TTL reporting through `WorkerIdLease` and Spring Boot health details.
+- Configurable consecutive heartbeat failure threshold for JDBC/Redis lease stores.
+
+### Changed
+
+- JDBC fencing validation and fenced operations now use atomic compare-and-set handling, including
+  MySQL/MariaDB affected-row differences and transient dialect conflicts.
+- JDBC schema auto-initialization is now opt-in by default in the Spring Boot starter.
+- Spring Boot validates custom Flake layouts before acquiring a worker lease and preserves user
+  supplied health, store, Redis client, and Redis connection beans.
+
 ## [3.0.0] - 2026-04-23
 
 Major release. Reshapes how `FlakeIdGenerator` and `SnowflakeIdGenerator` respond to a backward-moving wall clock. The 2.x behaviour — throw on any single-millisecond regression — turned routine NTP slews, container pauses, and VM resume events into operator-visible errors. 3.0.0 introduces a configurable tolerance budget (10 ms by default) that absorbs those small regressions while still catching genuinely large clock steps. Applications that want the old fail-fast semantics can opt back in with one parameter.

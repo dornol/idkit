@@ -34,14 +34,17 @@ class RedisIdKitAutoConfiguration {
         }
 
     @Bean(destroyMethod = "shutdown")
+    @ConditionalOnMissingBean(RedisClient::class)
     fun idKitRedisClient(properties: IdKitProperties): RedisClient =
         RedisClient.create(properties.redis.uri)
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean(StatefulRedisConnection::class)
     fun idKitRedisConnection(client: RedisClient): StatefulRedisConnection<String, String> =
         client.connect()
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean(RedisWorkerIdLeaseStore::class)
     fun redisWorkerIdLeaseStore(
         connection: StatefulRedisConnection<String, String>,
         idKitScheduler: ScheduledExecutorService,
@@ -51,6 +54,7 @@ class RedisIdKitAutoConfiguration {
         commands = connection.sync(),
         scheduler = idKitScheduler,
         keyPrefix = properties.redis.keyPrefix,
+        heartbeatFailureThreshold = properties.heartbeatFailureThreshold,
         failureListener = RedisLeaseFailureListener { workerId, datacenterId, cause ->
             log.error("idkit Redis worker lease lost: workerId={}, datacenterId={}", workerId, datacenterId, cause)
         },
@@ -96,5 +100,6 @@ class RedisIdKitAutoConfiguration {
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
+        require(properties.heartbeatFailureThreshold > 0) { "idkit.heartbeat-failure-threshold must be > 0" }
     }
 }

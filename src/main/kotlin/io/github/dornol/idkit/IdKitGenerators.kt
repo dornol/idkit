@@ -2,6 +2,9 @@ package io.github.dornol.idkit
 
 import io.github.dornol.idkit.flake.FlakeIdGenerator
 import io.github.dornol.idkit.flake.SnowflakeIdGenerator
+import io.github.dornol.idkit.nanoid.NanoIdGenerator
+import io.github.dornol.idkit.ulid.UlidIdGenerator
+import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
 import io.github.dornol.idkit.worker.LeasedIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import java.time.Duration
@@ -9,6 +12,22 @@ import java.time.Instant
 
 /** Java-friendly factories for the built-in ID generators. */
 object IdKitGenerators {
+    /** Creates a UUID v7 generator with the default UTC clock. */
+    @JvmStatic
+    fun uuidV7(): UuidV7IdGenerator = UuidV7IdGenerator()
+
+    /** Creates a monotonic ULID generator with the default UTC clock. */
+    @JvmStatic
+    fun ulid(): UlidIdGenerator = UlidIdGenerator()
+
+    /** Creates a NanoID generator with the default size and URL-safe alphabet. */
+    @JvmStatic
+    fun nanoId(): NanoIdGenerator = NanoIdGenerator()
+
+    /** Creates a NanoID generator with a custom size and alphabet. */
+    @JvmStatic
+    fun nanoId(size: Int, alphabet: String): NanoIdGenerator = NanoIdGenerator(size, alphabet)
+
     @JvmStatic
     fun snowflake(workerId: Int, datacenterId: Int): SnowflakeIdGenerator =
         SnowflakeIdGenerator.create(workerId, datacenterId)

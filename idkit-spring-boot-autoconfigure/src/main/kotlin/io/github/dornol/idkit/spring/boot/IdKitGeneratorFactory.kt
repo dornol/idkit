@@ -10,6 +10,19 @@ internal object IdKitGeneratorFactory {
         val generator = properties.generator
         val workerBits = if (generator.type == IdKitProperties.Type.SNOWFLAKE) 5 else generator.workerIdBits
         val datacenterBits = if (generator.type == IdKitProperties.Type.SNOWFLAKE) 5 else generator.datacenterIdBits
+        if (generator.type == IdKitProperties.Type.FLAKE) {
+            require(generator.timestampBits > 0) { "idkit.generator.timestamp-bits must be > 0" }
+            require(generator.timestampDivisor > 0) { "idkit.generator.timestamp-divisor must be > 0" }
+            require(generator.datacenterIdBits in 1..5) {
+                "idkit.generator.datacenter-id-bits must be between 1 and 5"
+            }
+            require(generator.workerIdBits in 1..31) {
+                "idkit.generator.worker-id-bits must be between 1 and 31"
+            }
+            require(1 + generator.timestampBits + generator.datacenterIdBits + generator.workerIdBits <= 63) {
+                "idkit.generator bit layout must leave at least one bit for the sequence"
+            }
+        }
         require(properties.workerCount.toLong() <= (1L shl workerBits)) {
             "idkit.worker-count exceeds the configured worker-id capacity"
         }

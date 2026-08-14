@@ -19,6 +19,7 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.utility.DockerImageName
 import java.util.concurrent.Executors
+import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
@@ -140,6 +141,16 @@ class JdbcAdditionalDialectIntegrationTest {
         assertTrue(validator.accept("integration-resource", 10))
         assertFalse(validator.accept("integration-resource", 9))
         assertEquals(10L, validator.current("integration-resource"))
+
+        val workers = Executors.newFixedThreadPool(4)
+        try {
+            val accepted = (1..16).map {
+                workers.submit(Callable { validator.accept("contention-resource", 20) })
+            }.count { it.get(10, TimeUnit.SECONDS) }
+            assertEquals(1, accepted)
+        } finally {
+            workers.shutdownNow()
+        }
     }
 
     private fun awaitConnection(dataSource: DataSource) {

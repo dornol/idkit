@@ -24,11 +24,15 @@ class JdbcWorkerIdLeaseStore(
     private val failureListener: JdbcLeaseFailureListener = JdbcLeaseFailureListener { _, _, _ -> },
     private val metrics: JdbcLeaseMetrics = NoopJdbcLeaseMetrics,
     private val clock: LeaseClock = SystemLeaseClock,
+    private val heartbeatFailureThreshold: Int = 1,
 ) : WorkerIdLeaseStore, AutoCloseable {
 
     private val activeLeases = ConcurrentHashMap.newKeySet<JdbcWorkerIdLease>()
 
-    init { requireValidTableName(tableName) }
+    init {
+        requireValidTableName(tableName)
+        require(heartbeatFailureThreshold > 0) { "heartbeatFailureThreshold must be > 0" }
+    }
 
     fun initialize(workerCount: Int, datacenterId: Int = 0) {
         require(workerCount > 0) { "workerCount must be > 0" }
@@ -133,7 +137,7 @@ class JdbcWorkerIdLeaseStore(
                     statement.executeUpdate()
                 }
                 connection.commit()
-                return JdbcWorkerIdLease(workerId, datacenterId, token, newFencingToken, ttlMillis).also {
+                return JdbcWorkerIdLease(workerId, datacenterId, token, newFencingToken, ttlMillis, until).also {
                     activeLeases += it
                     metrics.acquired()
                     metrics.activeLeases(activeLeases.size)
@@ -157,10 +161,15 @@ class JdbcWorkerIdLeaseStore(
         private val token: String,
         override val fencingToken: Long,
         private val ttlMillis: Long,
+        initialLeaseUntilMillis: Long,
     ) : WorkerIdLease {
         private val valid = AtomicBoolean(true)
+        private val heartbeatFailures = java.util.concurrent.atomic.AtomicInteger()
+        @Volatile private var leaseUntilMillis = initialLeaseUntilMillis
         private val heartbeat = scheduler.scheduleAtFixedRate({ renew() }, ttlMillis / 3, (ttlMillis / 3).coerceAtLeast(1), TimeUnit.MILLISECONDS)
         override val isValid: Boolean get() = valid.get()
+        override val remainingTtlMillis: Long
+            get() = (leaseUntilMillis - clock.millis()).coerceAtLeast(0L)
 
         private fun renew() {
             if (!valid.get()) return
@@ -173,21 +182,27 @@ class JdbcWorkerIdLeaseStore(
                         statement.setLong(1, until); statement.setInt(2, datacenterId); statement.setInt(3, workerId); statement.setString(4, token)
                         if (statement.executeUpdate() != 1) {
                             metrics.heartbeatFailed()
-                            invalidate(IllegalStateException("JDBC worker lease was lost"))
+                            if (heartbeatFailures.incrementAndGet() >= heartbeatFailureThreshold) {
+                                invalidate(IllegalStateException("JDBC worker lease was lost"))
+                            }
                         } else {
+                            leaseUntilMillis = until
+                            heartbeatFailures.set(0)
                             metrics.heartbeatSucceeded()
                         }
                     }
                 }
             } catch (failure: Exception) {
                 metrics.heartbeatFailed()
-                invalidate(failure)
+                if (heartbeatFailures.incrementAndGet() >= heartbeatFailureThreshold) invalidate(failure)
             }
         }
 
         private fun invalidate(cause: Throwable) {
             if (valid.getAndSet(false)) {
                 runCatching { failureListener.onFailure(workerId, datacenterId, cause) }
+                activeLeases.remove(this)
+                metrics.activeLeases(activeLeases.size)
             }
         }
 

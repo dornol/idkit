@@ -22,20 +22,27 @@ class JdbcFencedOperationExecutor(
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             try {
-                val current = connection.prepareStatement("SELECT fencing_token FROM $tableName WHERE resource_key = ?").use { statement ->
-                    statement.setString(1, resource)
-                    statement.executeQuery().use { result -> if (result.next()) result.getLong(1) else null }
+                val applied = if (dialect === JdbcLeaseDialect.MYSQL || dialect === JdbcLeaseDialect.MARIADB) {
+                    advanceMySql(connection, resource, fencingToken)
+                } else {
+                    val current = connection.prepareStatement("SELECT fencing_token FROM $tableName WHERE resource_key = ?").use { statement ->
+                        statement.setString(1, resource)
+                        statement.executeQuery().use { result -> if (result.next()) result.getLong(1) else null }
+                    }
+                    if (current != null && fencingToken <= current) {
+                        connection.rollback()
+                        return FencedOperationResult.REJECTED_STALE
+                    }
+                    connection.prepareStatement(dialect.fencedOperationSql(tableName)).use { statement ->
+                        statement.setString(1, resource)
+                        statement.setLong(2, fencingToken)
+                        statement.executeUpdate() > 0
+                    }
                 }
-                if (current != null && fencingToken <= current) {
-                    connection.rollback()
-                    return FencedOperationResult.REJECTED_STALE
-                }
-                val applied = connection.prepareStatement(dialect.fencedOperationSql(tableName)).use { statement ->
-                    statement.setString(1, resource)
-                    statement.setLong(2, fencingToken)
-                    statement.executeUpdate()
-                }
-                if (applied == 0 && current != null) {
+                // A zero-row compare-and-set means another owner already advanced the token,
+                // including the race where this transaction observed no row before it was
+                // inserted by a concurrent transaction.  Never execute the side effect then.
+                if (!applied) {
                     connection.rollback()
                     return FencedOperationResult.REJECTED_STALE
                 }
@@ -46,6 +53,33 @@ class JdbcFencedOperationExecutor(
                 connection.rollback()
                 throw failure
             }
+        }
+    }
+
+    private fun advanceMySql(connection: Connection, resource: String, fencingToken: Long): Boolean {
+        val inserted = connection.prepareStatement(
+            "INSERT IGNORE INTO $tableName (resource_key, fencing_token) VALUES (?, ?)",
+        ).use { statement ->
+            statement.setString(1, resource)
+            statement.setLong(2, fencingToken)
+            statement.executeUpdate()
+        }
+        if (inserted > 0) return true
+
+        val current = connection.prepareStatement(
+            "SELECT fencing_token FROM $tableName WHERE resource_key = ? FOR UPDATE",
+        ).use { statement ->
+            statement.setString(1, resource)
+            statement.executeQuery().use { result -> if (result.next()) result.getLong(1) else null }
+        }
+        if (current == null || fencingToken <= current) return false
+        return connection.prepareStatement(
+            "UPDATE $tableName SET fencing_token = ? WHERE resource_key = ? AND fencing_token < ?",
+        ).use { statement ->
+            statement.setLong(1, fencingToken)
+            statement.setString(2, resource)
+            statement.setLong(3, fencingToken)
+            statement.executeUpdate() == 1
         }
     }
 

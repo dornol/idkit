@@ -38,6 +38,7 @@ class JdbcIdKitAutoConfiguration {
         }
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnMissingBean(JdbcWorkerIdLeaseStore::class)
     fun jdbcWorkerIdLeaseStore(
         dataSource: DataSource,
         idKitScheduler: ScheduledExecutorService,
@@ -52,6 +53,7 @@ class JdbcIdKitAutoConfiguration {
             log.error("idkit JDBC worker lease lost: workerId={}, datacenterId={}", workerId, datacenterId, cause)
         },
         metrics = metrics,
+        heartbeatFailureThreshold = properties.heartbeatFailureThreshold,
         clock = SystemLeaseClock,
     )
 
@@ -101,6 +103,7 @@ class JdbcIdKitAutoConfiguration {
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
+        require(properties.heartbeatFailureThreshold > 0) { "idkit.heartbeat-failure-threshold must be > 0" }
     }
 
     private fun IdKitProperties.Dialect.toDialect(): JdbcLeaseDialect = when (this) {

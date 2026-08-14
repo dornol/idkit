@@ -27,7 +27,10 @@ class RedisWorkerIdLeaseStore(
     private val random: SecureRandom = SecureRandom(),
     private val failureListener: RedisLeaseFailureListener = RedisLeaseFailureListener { _, _, _ -> },
     private val metrics: RedisLeaseMetrics = NoopRedisLeaseMetrics,
+    private val heartbeatFailureThreshold: Int = 1,
 ) : WorkerIdLeaseStore, AutoCloseable {
+
+    init { require(heartbeatFailureThreshold > 0) { "heartbeatFailureThreshold must be > 0" } }
 
     private val activeLeases = ConcurrentHashMap.newKeySet<RedisWorkerIdLease>()
 
@@ -113,6 +116,8 @@ class RedisWorkerIdLeaseStore(
     ) : WorkerIdLease {
         private val storedToken = "$fencingToken|$token"
         private val valid = AtomicBoolean(true)
+        private val heartbeatFailures = java.util.concurrent.atomic.AtomicInteger()
+        @Volatile private var leaseUntilMillis = System.currentTimeMillis() + ttlMillis
         private val heartbeat = scheduler.scheduleAtFixedRate(
             { renew() },
             ttlMillis / 3,
@@ -122,6 +127,8 @@ class RedisWorkerIdLeaseStore(
 
         override val isValid: Boolean
             get() = valid.get()
+        override val remainingTtlMillis: Long
+            get() = (leaseUntilMillis - System.currentTimeMillis()).coerceAtLeast(0L)
 
         private fun renew() {
             if (!valid.get()) return
@@ -135,13 +142,17 @@ class RedisWorkerIdLeaseStore(
                 )
                 if (renewed != 1L) {
                     metrics.heartbeatFailed()
-                    invalidate(IllegalStateException("Redis worker lease was lost"))
+                    if (heartbeatFailures.incrementAndGet() >= heartbeatFailureThreshold) {
+                        invalidate(IllegalStateException("Redis worker lease was lost"))
+                    }
                 } else {
+                    leaseUntilMillis = System.currentTimeMillis() + ttlMillis
+                    heartbeatFailures.set(0)
                     metrics.heartbeatSucceeded()
                 }
             } catch (failure: RuntimeException) {
                 metrics.heartbeatFailed()
-                invalidate(failure)
+                if (heartbeatFailures.incrementAndGet() >= heartbeatFailureThreshold) invalidate(failure)
             }
         }
 

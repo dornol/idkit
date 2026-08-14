@@ -12,6 +12,7 @@ class IdKitProperties {
     var datacenterId: Int = 0
     var owner: String = defaultOwner()
     var leaseTtl: Duration = Duration.ofSeconds(30)
+    var heartbeatFailureThreshold: Int = 1
     var metrics: Metrics = Metrics()
     var generator: Generator = Generator()
     var jdbc: Jdbc = Jdbc()
@@ -37,7 +38,13 @@ class IdKitProperties {
     enum class Type { SNOWFLAKE, FLAKE }
 
     class Jdbc {
-        var autoInitialize: Boolean = true
+        /**
+         * Creates the lease table and missing fencing column on startup when enabled.
+         *
+         * DDL is opt-in so production applications that manage schema through migrations do
+         * not unexpectedly require schema-altering privileges at startup.
+         */
+        var autoInitialize: Boolean = false
         var dialect: Dialect = Dialect.POSTGRESQL
         var tableName: String = "idkit_worker_lease"
     }

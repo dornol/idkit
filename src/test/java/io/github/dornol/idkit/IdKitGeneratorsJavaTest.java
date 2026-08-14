@@ -6,6 +6,7 @@ import io.github.dornol.idkit.worker.WorkerIdLease;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class IdKitGeneratorsJavaTest {
@@ -39,5 +40,12 @@ class IdKitGeneratorsJavaTest {
         FlakeIdGenerator generator = IdKitGenerators.snowflake(3, 2);
 
         assertTrue(generator.nextId() > 0);
+    }
+
+    @Test
+    void createsStringAndUuidGeneratorsFromJava() {
+        assertEquals(26, IdKitGenerators.ulid().nextId().length());
+        assertEquals(21, IdKitGenerators.nanoId().nextId().length());
+        assertEquals(7, IdKitGenerators.uuidV7().nextId().version());
     }
 }

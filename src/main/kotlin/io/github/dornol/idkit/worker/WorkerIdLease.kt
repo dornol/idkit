@@ -13,6 +13,10 @@ interface WorkerIdLease : AutoCloseable {
     val isValid: Boolean
         get() = true
 
+    /** Best-effort local view of the remaining lease time; null when the backend cannot expose it. */
+    val remainingTtlMillis: Long?
+        get() = null
+
     /** Releases the reservation. Implementations should make this idempotent. */
     override fun close()
 }

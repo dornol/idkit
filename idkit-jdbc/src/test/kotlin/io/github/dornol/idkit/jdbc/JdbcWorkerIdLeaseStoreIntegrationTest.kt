@@ -237,6 +237,23 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
     }
 
     @Test
+    fun `JDBC fencing validator accepts an identical first token only once under contention`() {
+        val validator = JdbcFencingTokenValidator(dataSource, tableName = "idkit_test_fencing_contention")
+        validator.initialize()
+        val workers = Executors.newFixedThreadPool(8)
+        try {
+            val futures = (1..32).map {
+                workers.submit(Callable { validator.accept("same-token", 7) })
+            }
+            val accepted = futures.count { it.get(10, TimeUnit.SECONDS) }
+            assertEquals(1, accepted)
+            assertEquals(7L, validator.current("same-token"))
+        } finally {
+            workers.shutdownNow()
+        }
+    }
+
+    @Test
     fun `JDBC fenced operation rolls back stale side effects`() {
         val executor = JdbcFencedOperationExecutor(dataSource, tableName = "idkit_test_fenced_ops")
         executor.initialize()

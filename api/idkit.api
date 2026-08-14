@@ -36,8 +36,12 @@ public final class io/github/dornol/idkit/IdKitGenerators {
 	public static final fun flake (Lio/github/dornol/idkit/worker/WorkerIdLease;IIIJLjava/time/Instant;Ljava/time/Duration;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
 	public static synthetic fun flake$default (IIIIIJLjava/time/Instant;Ljava/time/Duration;ILjava/lang/Object;)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
 	public static synthetic fun flake$default (Lio/github/dornol/idkit/worker/WorkerIdLease;IIIJLjava/time/Instant;Ljava/time/Duration;ILjava/lang/Object;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static final fun nanoId ()Lio/github/dornol/idkit/nanoid/NanoIdGenerator;
+	public static final fun nanoId (ILjava/lang/String;)Lio/github/dornol/idkit/nanoid/NanoIdGenerator;
 	public static final fun snowflake (II)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
 	public static final fun snowflake (Lio/github/dornol/idkit/worker/WorkerIdLease;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static final fun ulid ()Lio/github/dornol/idkit/ulid/UlidIdGenerator;
+	public static final fun uuidV7 ()Lio/github/dornol/idkit/uuidv7/UuidV7IdGenerator;
 }
 
 public abstract interface class io/github/dornol/idkit/IdParser {
@@ -330,12 +334,14 @@ public abstract interface class io/github/dornol/idkit/worker/WorkerIdLease : ja
 	public abstract fun close ()V
 	public abstract fun getDatacenterId ()I
 	public fun getFencingToken ()J
+	public fun getRemainingTtlMillis ()Ljava/lang/Long;
 	public abstract fun getWorkerId ()I
 	public fun isValid ()Z
 }
 
 public final class io/github/dornol/idkit/worker/WorkerIdLease$DefaultImpls {
 	public static fun getFencingToken (Lio/github/dornol/idkit/worker/WorkerIdLease;)J
+	public static fun getRemainingTtlMillis (Lio/github/dornol/idkit/worker/WorkerIdLease;)Ljava/lang/Long;
 	public static fun isValid (Lio/github/dornol/idkit/worker/WorkerIdLease;)Z
 }
 
