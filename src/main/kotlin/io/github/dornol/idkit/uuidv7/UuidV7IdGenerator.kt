@@ -47,6 +47,7 @@ import java.util.concurrent.atomic.AtomicLong
 open class UuidV7IdGenerator(
     private val clock: Clock = Clock.systemUTC(),
     private val listener: IdGeneratorListener = IdGeneratorListener.NOOP,
+    private val counterMode: UuidV7CounterMode = UuidV7CounterMode.MONOTONIC,
 ) : IdGenerator<UUID> {
 
     /**
@@ -122,7 +123,11 @@ open class UuidV7IdGenerator(
             val counterBorrowed: Boolean
             if (now > prevTs) {
                 newTs = now
-                newCounter = 0L
+                newCounter = nextCounter()
+                counterBorrowed = false
+            } else if (counterMode == UuidV7CounterMode.RANDOM) {
+                newTs = prevTs
+                newCounter = nextCounter()
                 counterBorrowed = false
             } else if (prevCounter == COUNTER_MASK) {
                 // Same ms, counter exhausted — borrow 1 ms from the clock.
@@ -151,6 +156,11 @@ open class UuidV7IdGenerator(
                 return newState
             }
         }
+    }
+
+    private fun nextCounter(): Long = when (counterMode) {
+        UuidV7CounterMode.MONOTONIC -> 0L
+        UuidV7CounterMode.RANDOM -> ThreadLocalRandom.current().nextLong(COUNTER_MASK + 1)
     }
 
     private companion object {

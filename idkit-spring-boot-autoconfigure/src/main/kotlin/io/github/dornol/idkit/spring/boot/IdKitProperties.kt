@@ -3,6 +3,7 @@ package io.github.dornol.idkit.spring.boot
 import java.net.InetAddress
 import java.time.Duration
 import java.time.Instant
+import io.github.dornol.idkit.uuidv7.UuidV7CounterMode
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties("idkit")
@@ -54,6 +55,7 @@ class IdKitProperties {
         var clockRegressionTolerance: Duration = Duration.ofMillis(10)
         var nanoSize: Int = 21
         var nanoAlphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+        var uuidV7CounterMode: UuidV7CounterMode = UuidV7CounterMode.MONOTONIC
     }
 
     enum class Type { SNOWFLAKE, FLAKE, UUID_V7, ULID, NANOID }

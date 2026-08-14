@@ -19,7 +19,8 @@ class LocalIdKitAutoConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "idkit.generator", name = ["type"], havingValue = "UUID_V7")
     @ConditionalOnMissingBean(IdGenerator::class)
-    fun uuidV7IdGenerator(): IdGenerator<java.util.UUID> = UuidV7IdGenerator()
+    fun uuidV7IdGenerator(properties: IdKitProperties): IdGenerator<java.util.UUID> =
+        UuidV7IdGenerator(counterMode = properties.generator.uuidV7CounterMode)
 
     @Bean
     @ConditionalOnProperty(prefix = "idkit.generator", name = ["type"], havingValue = "ULID")

@@ -52,6 +52,7 @@
     { "name": "idkit.generator.clock-regression-tolerance", "type": "java.time.Duration", "defaultValue": "10ms", "description": "Clock regression tolerance." },
     { "name": "idkit.generator.nano-size", "type": "java.lang.Integer", "defaultValue": 21, "description": "NanoID length when generator type is nanoid." },
     { "name": "idkit.generator.nano-alphabet", "type": "java.lang.String", "description": "NanoID alphabet when generator type is nanoid." },
+    { "name": "idkit.generator.uuid-v7-counter-mode", "type": "java.lang.String", "defaultValue": "MONOTONIC", "description": "UUIDv7 rand_a policy: MONOTONIC or RANDOM." },
     { "name": "idkit.jdbc.auto-initialize", "type": "java.lang.Boolean", "defaultValue": false, "description": "Create the JDBC lease table and worker rows at startup." },
     { "name": "idkit.jdbc.validate-schema", "type": "java.lang.Boolean", "defaultValue": false, "description": "Validate the JDBC lease table, fencing column, and worker rows at startup without changing schema." },
     { "name": "idkit.jdbc.dialect", "type": "java.lang.String", "defaultValue": "POSTGRESQL", "description": "JDBC dialect." },
@@ -64,6 +65,7 @@
   "hints": [
     { "name": "idkit.backend", "values": [{ "value": "jdbc" }, { "value": "redis" }] },
     { "name": "idkit.generator.type", "values": [{ "value": "snowflake" }, { "value": "flake" }, { "value": "uuid_v7" }, { "value": "ulid" }, { "value": "nanoid" }] },
+    { "name": "idkit.generator.uuid-v7-counter-mode", "values": [{ "value": "MONOTONIC" }, { "value": "RANDOM" }] },
     { "name": "idkit.jdbc.dialect", "values": [{ "value": "POSTGRESQL" }, { "value": "MYSQL" }, { "value": "MARIADB" }, { "value": "MSSQL" }, { "value": "ORACLE" }] }
   ]
 }
