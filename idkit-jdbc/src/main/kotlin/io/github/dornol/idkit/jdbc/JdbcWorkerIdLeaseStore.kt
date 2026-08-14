@@ -31,7 +31,58 @@ class JdbcWorkerIdLeaseStore(
 
     init {
         requireValidTableName(tableName)
-        require(heartbeatFailureThreshold > 0) { "heartbeatFailureThreshold must be > 0" }
+        require(heartbeatFailureThreshold in 1..2) {
+            "heartbeatFailureThreshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
+    }
+
+    /**
+     * Verifies that the lease table, fencing column, and requested worker slots already exist.
+     * This performs no DDL and is useful when schema changes are managed by Flyway/Liquibase.
+     */
+    fun validateSchema(workerCount: Int, datacenterId: Int = 0) {
+        require(workerCount > 0) { "workerCount must be > 0" }
+        require(datacenterId >= 0) { "datacenterId must be >= 0" }
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("SELECT fencing_token FROM $tableName WHERE 1 = 0").use {
+                it.executeQuery().close()
+            }
+            connection.prepareStatement(
+                "SELECT COUNT(*) FROM $tableName WHERE datacenter_id = ? AND worker_id >= 0 AND worker_id < ?",
+            ).use { statement ->
+                statement.setInt(1, datacenterId)
+                statement.setInt(2, workerCount)
+                statement.executeQuery().use { result ->
+                    result.next()
+                    val actual = result.getLong(1)
+                    check(actual == workerCount.toLong()) {
+                        "Expected $workerCount worker rows for datacenterId=$datacenterId, found $actual"
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns reviewed SQL statements for a migration tool to apply. Values are validated and
+     * rendered as numeric literals; the returned statements are not executed by this method.
+     */
+    fun migrationSql(workerCount: Int, datacenterId: Int = 0): List<String> {
+        require(workerCount > 0) { "workerCount must be > 0" }
+        require(datacenterId >= 0) { "datacenterId must be >= 0" }
+        val create = if (dialect === JdbcLeaseDialect.MSSQL || dialect === JdbcLeaseDialect.ORACLE) {
+            dialect.createTableSql.format(tableName, tableName, "${tableName}_pk")
+        } else {
+            dialect.createTableSql.format(tableName)
+        }
+        val statements = mutableListOf(create)
+        dialect.addFencingTokenSql(tableName).takeIf { it.isNotBlank() }?.let(statements::add)
+        repeat(workerCount) { workerId ->
+            statements += dialect.insertIfAbsentSql(tableName)
+                .replaceFirst("?", datacenterId.toString())
+                .replaceFirst("?", workerId.toString())
+        }
+        return statements
     }
 
     fun initialize(workerCount: Int, datacenterId: Int = 0) {

@@ -1,0 +1,40 @@
+[versions]
+junit = "5.10.0"
+junitPlatform = "1.10.0"
+junitSpring = "5.12.2"
+junitSpringPlatform = "1.12.2"
+micrometer = "1.14.13"
+testcontainers = "1.21.4"
+postgresql = "42.7.7"
+mysql = "9.4.0"
+mariadb = "3.5.6"
+mssql = "13.2.0.jre11"
+oracle = "23.8.0.25.04"
+lettuce = "7.6.0.RELEASE"
+springBoot = "3.4.5"
+springFramework = "6.2.6"
+hibernateValidator = "8.0.1.Final"
+expressly = "5.0.0"
+slf4j = "2.0.17"
+
+[libraries]
+junitBom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junitJupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junitLauncher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
+junitSpring = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitSpring" }
+junitSpringLauncher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitSpringPlatform" }
+micrometerCore = { module = "io.micrometer:micrometer-core", version.ref = "micrometer" }
+testcontainers = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+mysql = { module = "com.mysql:mysql-connector-j", version.ref = "mysql" }
+mariadb = { module = "org.mariadb.jdbc:mariadb-java-client", version.ref = "mariadb" }
+mssql = { module = "com.microsoft.sqlserver:mssql-jdbc", version.ref = "mssql" }
+oracle = { module = "com.oracle.database.jdbc:ojdbc11", version.ref = "oracle" }
+lettuce = { module = "io.lettuce:lettuce-core", version.ref = "lettuce" }
+springBootAutoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure", version.ref = "springBoot" }
+springBootActuator = { module = "org.springframework.boot:spring-boot-actuator", version.ref = "springBoot" }
+springBootConfigurationProcessor = { module = "org.springframework.boot:spring-boot-configuration-processor", version.ref = "springBoot" }
+springContext = { module = "org.springframework:spring-context", version.ref = "springFramework" }
+hibernateValidator = { module = "org.hibernate.validator:hibernate-validator", version.ref = "hibernateValidator" }
+expressly = { module = "org.glassfish.expressly:expressly", version.ref = "expressly" }
+slf4jApi = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }

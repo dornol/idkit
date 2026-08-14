@@ -140,6 +140,7 @@ idkit:
     epoch: 1970-01-01T00:00:00Z
   jdbc:
     auto-initialize: false
+    validate-schema: false
     dialect: POSTGRESQL
     table-name: idkit_worker_lease
 ```
@@ -155,9 +156,14 @@ worker, and sequence bit layout across the 64-bit ID. When Spring Boot Actuator 
 counters and the active-lease gauge are registered automatically. Both integrations can be
 disabled with `idkit.health.enabled: false` or `idkit.metrics.enabled: false`.
 
+Set `idkit.jdbc.validate-schema: true` when migrations create the table. This checks the fencing
+column and expected worker rows without executing DDL. For migration tooling, call
+`JdbcWorkerIdLeaseStore.migrationSql(workerCount, datacenterId)` to obtain dialect-specific
+statements for review and application by Flyway, Liquibase, or an equivalent process.
+
 `heartbeat-failure-threshold` controls how many consecutive renewal failures are tolerated before
-the lease is invalidated. Keep it low enough that the lease TTL cannot expire before the next
-retry; the default `1` fails closed immediately.
+the lease is invalidated. It accepts `1` or `2`; the default `1` fails closed immediately. This
+limit keeps the built-in heartbeat schedule from allowing the lease TTL to expire first.
 
 ## Quick start
 

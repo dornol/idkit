@@ -19,19 +19,19 @@ repositories {
 val jakartaValidationApi = "jakarta.validation:jakarta.validation-api:3.1.1"
 
 dependencies {
-    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation(libs.slf4jApi)
     // Jakarta Bean Validation is an optional integration point. Users who pull in idkit
     // alongside a validation engine (Spring/Quarkus/Hibernate Validator) get the annotations
     // on the classpath; users who don't incur no extra transitive dependency.
     compileOnly(jakartaValidationApi)
     implementation(kotlin("stdlib-jdk8"))
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation(platform(libs.junitBom))
+    testImplementation(libs.junitJupiter)
+    testRuntimeOnly(libs.junitLauncher)
     // compileOnly above is not on the test runtime classpath, so re-declare for tests.
     testImplementation(jakartaValidationApi)
-    testImplementation("org.hibernate.validator:hibernate-validator:8.0.1.Final")
-    testImplementation("org.glassfish.expressly:expressly:5.0.0")
+    testImplementation(libs.hibernateValidator)
+    testImplementation(libs.expressly)
 }
 
 tasks.test {
@@ -45,6 +45,31 @@ tasks.named("check") {
     dependsOn(":idkit-spring-boot-autoconfigure:check")
     dependsOn(":idkit-spring-boot-starter-jdbc:check")
     dependsOn(":idkit-spring-boot-starter-redis:check")
+}
+
+// Release workflow guard: fail before signing/uploading if a module silently drops out of the
+// Maven Central publication graph.
+tasks.register("verifyPublicationModules") {
+    doLast {
+        val expected = listOf(
+            ":",
+            ":idkit-jdbc",
+            ":idkit-redis",
+            ":idkit-spring-boot-autoconfigure",
+            ":idkit-spring-boot-starter-jdbc",
+            ":idkit-spring-boot-starter-redis",
+        )
+        val missingTasks = expected.filter { path ->
+            project(path).tasks.findByName("publishMavenPublicationToMavenCentralRepository") == null
+        }
+        check(missingTasks.isEmpty()) {
+            "Expected Maven Central publication task is missing for: ${missingTasks.joinToString() }"
+        }
+        check(expected.map { project(it).version }.distinct().size == 1) {
+            "All published modules must use the same project version"
+        }
+        logger.lifecycle("Verified Maven Central publications: ${expected.joinToString()}")
+    }
 }
 kotlin {
     jvmToolchain(11)

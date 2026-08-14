@@ -159,6 +159,27 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
     }
 
     @Test
+    fun `Redis fencing validator survives a concurrent token stress burst`() {
+        val validator = RedisFencingTokenValidator(connection.sync(), "test:fencing-stress")
+        val workers = Executors.newFixedThreadPool(16)
+        try {
+            val futures = (1L..256L).map { token ->
+                workers.submit {
+                    client.connect().use { ownedConnection ->
+                        RedisFencingTokenValidator(ownedConnection.sync(), "test:fencing-stress")
+                            .accept("orders", token)
+                    }
+                }
+            }
+            futures.forEach { it.get(20, TimeUnit.SECONDS) }
+            assertEquals(256L, validator.current("orders"))
+        } finally {
+            workers.shutdownNow()
+            connection.sync().del("test:fencing-stress:orders")
+        }
+    }
+
+    @Test
     fun `Redis fenced script rejects stale side effects atomically`() {
         val executor = RedisFencedScriptExecutor(connection.sync(), "test:fenced-script")
         val operation = "redis.call('set', KEYS[2], ARGV[2])"

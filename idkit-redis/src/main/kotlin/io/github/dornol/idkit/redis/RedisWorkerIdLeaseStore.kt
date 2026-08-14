@@ -30,7 +30,11 @@ class RedisWorkerIdLeaseStore(
     private val heartbeatFailureThreshold: Int = 1,
 ) : WorkerIdLeaseStore, AutoCloseable {
 
-    init { require(heartbeatFailureThreshold > 0) { "heartbeatFailureThreshold must be > 0" } }
+    init {
+        require(heartbeatFailureThreshold in 1..2) {
+            "heartbeatFailureThreshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
+    }
 
     private val activeLeases = ConcurrentHashMap.newKeySet<RedisWorkerIdLease>()
 

@@ -82,6 +82,7 @@ class IdKitSpringBootIntegrationTest {
                 "idkit.worker-count=4",
                 "idkit.owner=spring-jdbc-test",
                 "idkit.jdbc.auto-initialize=true",
+                "idkit.jdbc.validate-schema=true",
                 "idkit.jdbc.table-name=idkit_spring_jdbc_lease",
             )
             .run { context ->

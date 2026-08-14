@@ -14,13 +14,13 @@ repositories {
 
 dependencies {
     api(project(":"))
-    api("io.lettuce:lettuce-core:7.6.0.RELEASE")
-    compileOnly("io.micrometer:micrometer-core:1.14.13")
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("io.micrometer:micrometer-core:1.14.13")
-    testImplementation("org.testcontainers:testcontainers:1.21.4")
+    api(libs.lettuce)
+    compileOnly(libs.micrometerCore)
+    testImplementation(platform(libs.junitBom))
+    testImplementation(libs.junitJupiter)
+    testRuntimeOnly(libs.junitLauncher)
+    testImplementation(libs.micrometerCore)
+    testImplementation(libs.testcontainers)
 }
 
 kotlin {

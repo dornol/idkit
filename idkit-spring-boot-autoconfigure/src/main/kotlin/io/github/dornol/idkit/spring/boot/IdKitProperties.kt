@@ -45,6 +45,8 @@ class IdKitProperties {
          * not unexpectedly require schema-altering privileges at startup.
          */
         var autoInitialize: Boolean = false
+        /** Validates the managed table and worker rows at startup without changing schema. */
+        var validateSchema: Boolean = false
         var dialect: Dialect = Dialect.POSTGRESQL
         var tableName: String = "idkit_worker_lease"
     }

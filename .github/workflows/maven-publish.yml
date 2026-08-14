@@ -46,6 +46,9 @@ jobs:
           PROJECT_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts)
           test "$RELEASE_TAG" = "$PROJECT_VERSION"
 
+      - name: Verify all Maven publications
+        run: ./gradlew verifyPublicationModules --no-daemon
+
       - name: Build & Publish
         run: ./gradlew check publish --no-daemon
 

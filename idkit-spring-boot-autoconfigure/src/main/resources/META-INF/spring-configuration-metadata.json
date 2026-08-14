@@ -39,6 +39,7 @@
     { "name": "idkit.generator.epoch", "type": "java.time.Instant", "defaultValue": "1970-01-01T00:00:00Z", "description": "Custom generator epoch." },
     { "name": "idkit.generator.clock-regression-tolerance", "type": "java.time.Duration", "defaultValue": "10ms", "description": "Clock regression tolerance." },
     { "name": "idkit.jdbc.auto-initialize", "type": "java.lang.Boolean", "defaultValue": false, "description": "Create the JDBC lease table and worker rows at startup." },
+    { "name": "idkit.jdbc.validate-schema", "type": "java.lang.Boolean", "defaultValue": false, "description": "Validate the JDBC lease table, fencing column, and worker rows at startup without changing schema." },
     { "name": "idkit.jdbc.dialect", "type": "java.lang.String", "defaultValue": "POSTGRESQL", "description": "JDBC dialect." },
     { "name": "idkit.jdbc.table-name", "type": "java.lang.String", "defaultValue": "idkit_worker_lease", "description": "JDBC lease table name." },
     { "name": "idkit.redis.uri", "type": "java.lang.String", "defaultValue": "redis://localhost:6379", "description": "Redis URI." },

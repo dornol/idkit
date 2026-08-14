@@ -12,17 +12,17 @@ repositories { mavenCentral() }
 
 dependencies {
     api(project(":"))
-    compileOnly("io.micrometer:micrometer-core:1.14.13")
-    testImplementation(platform("org.junit:junit-bom:5.10.0"))
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("io.micrometer:micrometer-core:1.14.13")
-    testImplementation("org.testcontainers:testcontainers:1.21.4")
-    testImplementation("org.postgresql:postgresql:42.7.7")
-    testImplementation("com.mysql:mysql-connector-j:9.4.0")
-    testImplementation("org.mariadb.jdbc:mariadb-java-client:3.5.6")
-    testImplementation("com.microsoft.sqlserver:mssql-jdbc:13.2.0.jre11")
-    testImplementation("com.oracle.database.jdbc:ojdbc11:23.8.0.25.04")
+    compileOnly(libs.micrometerCore)
+    testImplementation(platform(libs.junitBom))
+    testImplementation(libs.junitJupiter)
+    testRuntimeOnly(libs.junitLauncher)
+    testImplementation(libs.micrometerCore)
+    testImplementation(libs.testcontainers)
+    testImplementation(libs.postgresql)
+    testImplementation(libs.mysql)
+    testImplementation(libs.mariadb)
+    testImplementation(libs.mssql)
+    testImplementation(libs.oracle)
 }
 
 kotlin { jvmToolchain(11) }

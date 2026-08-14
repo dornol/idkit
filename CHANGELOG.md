@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Java-friendly factories for UUID v7, ULID, and NanoID generators.
 - Optional lease remaining-TTL reporting through `WorkerIdLease` and Spring Boot health details.
 - Configurable consecutive heartbeat failure threshold for JDBC/Redis lease stores.
+- JDBC schema validation and dialect-specific migration SQL preview support.
 
 ### Changed
 
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JDBC schema auto-initialization is now opt-in by default in the Spring Boot starter.
 - Spring Boot validates custom Flake layouts before acquiring a worker lease and preserves user
   supplied health, store, Redis client, and Redis connection beans.
+- Heartbeat failure thresholds are limited to values that invalidate before the configured lease
+  TTL can normally expire.
 
 ## [3.0.0] - 2026-04-23
 

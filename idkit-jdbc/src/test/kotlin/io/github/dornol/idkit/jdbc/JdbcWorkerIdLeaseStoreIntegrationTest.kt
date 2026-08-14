@@ -74,6 +74,8 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
     @Test
     fun `acquire is atomic and conflicting owner is rejected`() {
         val first = store.acquireAny(4, datacenterId = 1, owner = "node-a", ttlMillis = 2_000)
+        store.validateSchema(4, datacenterId = 1)
+        assertTrue(store.migrationSql(2, datacenterId = 1).size >= 4)
         assertEquals(0, first.workerId)
         assertNull(store.tryAcquire(0, 1, "node-b", 2_000))
 
@@ -234,6 +236,22 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
         assertFalse(validator.accept("orders", 9))
         assertTrue(validator.accept("orders", 11))
         assertEquals(11L, validator.current("orders"))
+    }
+
+    @Test
+    fun `JDBC fencing validator survives a concurrent token stress burst`() {
+        val validator = JdbcFencingTokenValidator(dataSource, tableName = "idkit_test_fencing_stress")
+        validator.initialize()
+        val workers = Executors.newFixedThreadPool(16)
+        try {
+            val futures = (1L..256L).map { token ->
+                workers.submit(Callable { validator.accept("stress", token) })
+            }
+            futures.forEach { it.get(20, TimeUnit.SECONDS) }
+            assertEquals(256L, validator.current("stress"))
+        } finally {
+            workers.shutdownNow()
+        }
     }
 
     @Test

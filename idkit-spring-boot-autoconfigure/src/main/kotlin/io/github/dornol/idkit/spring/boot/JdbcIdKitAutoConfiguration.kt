@@ -71,6 +71,9 @@ class JdbcIdKitAutoConfiguration {
         if (properties.jdbc.autoInitialize) {
             store.initialize(properties.workerCount, properties.datacenterId)
         }
+        if (properties.jdbc.validateSchema) {
+            store.validateSchema(properties.workerCount, properties.datacenterId)
+        }
         return acquire(store, properties)
     }
 
@@ -103,7 +106,9 @@ class JdbcIdKitAutoConfiguration {
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
-        require(properties.heartbeatFailureThreshold > 0) { "idkit.heartbeat-failure-threshold must be > 0" }
+        require(properties.heartbeatFailureThreshold in 1..2) {
+            "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
     }
 
     private fun IdKitProperties.Dialect.toDialect(): JdbcLeaseDialect = when (this) {
