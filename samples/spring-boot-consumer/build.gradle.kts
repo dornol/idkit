@@ -19,8 +19,8 @@ repositories {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
-    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.2.0")
-    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.2.0")
+    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.2.1")
+    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.2.1")
 
     runtimeOnly("org.postgresql:postgresql:42.7.7")
 

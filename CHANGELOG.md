@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.2.1] - 2026-08-14
+
+### Fixed
+
+- JDBC Spring Boot auto-configuration now discovers a Docker Compose-provided `DataSource` when
+  running on newer Spring Boot versions. The `DataSource` condition is evaluated when the lease
+  store bean is created instead of prematurely excluding the entire auto-configuration class.
+
 ## [3.2.0] - 2026-08-14
 
 Operational resilience, distributed lease recovery, and release tooling improvements.
@@ -259,6 +267,7 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[3.2.1]: https://github.com/dornol/idkit/releases/tag/3.2.1
 [3.2.0]: https://github.com/dornol/idkit/releases/tag/3.2.0
 [3.1.0]: https://github.com/dornol/idkit/releases/tag/3.1.0
 [3.0.0]: https://github.com/dornol/idkit/releases/tag/3.0.0
