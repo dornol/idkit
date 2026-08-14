@@ -41,3 +41,21 @@ jobs:
             build/reports/tests/
             build/test-results/
           retention-days: 7
+
+  spring-boot-consumer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run Spring Boot consumer smoke tests
+        run: ./gradlew -p samples/spring-boot-consumer test --no-daemon
