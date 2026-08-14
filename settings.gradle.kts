@@ -9,3 +9,6 @@ plugins {
 rootProject.name = "idkit"
 include(":idkit-redis")
 include(":idkit-jdbc")
+include(":idkit-spring-boot-autoconfigure")
+include(":idkit-spring-boot-starter-jdbc")
+include(":idkit-spring-boot-starter-redis")

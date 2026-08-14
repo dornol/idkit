@@ -24,6 +24,22 @@ public final class io/github/dornol/idkit/IdGeneratorListener$DefaultImpls {
 	public static fun onSequenceOverflow (Lio/github/dornol/idkit/IdGeneratorListener;)V
 }
 
+public final class io/github/dornol/idkit/IdKitGenerators {
+	public static final field INSTANCE Lio/github/dornol/idkit/IdKitGenerators;
+	public static final fun flake (IIIII)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static final fun flake (IIIIIJ)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static final fun flake (IIIIIJLjava/time/Instant;)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static final fun flake (IIIIIJLjava/time/Instant;Ljava/time/Duration;)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static final fun flake (Lio/github/dornol/idkit/worker/WorkerIdLease;III)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static final fun flake (Lio/github/dornol/idkit/worker/WorkerIdLease;IIIJ)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static final fun flake (Lio/github/dornol/idkit/worker/WorkerIdLease;IIIJLjava/time/Instant;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static final fun flake (Lio/github/dornol/idkit/worker/WorkerIdLease;IIIJLjava/time/Instant;Ljava/time/Duration;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static synthetic fun flake$default (IIIIIJLjava/time/Instant;Ljava/time/Duration;ILjava/lang/Object;)Lio/github/dornol/idkit/flake/FlakeIdGenerator;
+	public static synthetic fun flake$default (Lio/github/dornol/idkit/worker/WorkerIdLease;IIIJLjava/time/Instant;Ljava/time/Duration;ILjava/lang/Object;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+	public static final fun snowflake (II)Lio/github/dornol/idkit/flake/SnowflakeIdGenerator;
+	public static final fun snowflake (Lio/github/dornol/idkit/worker/WorkerIdLease;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
+}
+
 public abstract interface class io/github/dornol/idkit/IdParser {
 	public abstract fun decompose (Ljava/lang/Object;)Ljava/lang/Object;
 	public abstract fun isValid (Ljava/lang/Object;)Z

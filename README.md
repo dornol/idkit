@@ -47,6 +47,35 @@ dependencies {
 }
 ```
 
+Java:
+
+```java
+import io.github.dornol.idkit.IdKitGenerators;
+import io.github.dornol.idkit.IdGenerator;
+
+IdGenerator<Long> generator = IdKitGenerators.flake(
+    workerId,
+    datacenterId,
+    42, // timestamp bits
+    4,  // datacenter bits
+    6   // worker bits
+);
+
+long id = generator.nextId();
+```
+
+When a distributed worker lease is already acquired, use the lease-aware factory so ID
+generation fails closed after lease loss:
+
+```java
+IdGenerator<Long> generator = IdKitGenerators.flake(
+    lease,
+    42,
+    4,
+    6
+);
+```
+
 Maven:
 ```xml
 <dependency>
@@ -55,6 +84,63 @@ Maven:
   <version>3.1.0</version>
 </dependency>
 ```
+
+### Spring Boot
+
+For Spring Boot applications, use the backend-specific starter. Both starters may be present
+at the same time; only the backend selected by `idkit.backend` is initialized.
+
+JDBC:
+
+```kotlin
+dependencies {
+    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.1.0")
+}
+```
+
+Redis:
+
+```kotlin
+dependencies {
+    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.1.0")
+}
+```
+
+Configure one backend and inject `IdGenerator<Long>` into application services:
+
+```yaml
+idkit:
+  backend: jdbc # jdbc or redis
+  worker-count: 32
+  datacenter-id: 0
+  owner: ${HOSTNAME:local}
+  lease-ttl: 30s
+  metrics:
+    enabled: true
+    prefix: idkit.lease
+  health:
+    enabled: true
+  generator:
+    type: snowflake # snowflake or flake
+    timestamp-bits: 41
+    datacenter-id-bits: 5
+    worker-id-bits: 5
+    timestamp-divisor: 1
+    epoch: 1970-01-01T00:00:00Z
+  jdbc:
+    auto-initialize: false
+    dialect: POSTGRESQL
+    table-name: idkit_worker_lease
+```
+
+For Redis, set `idkit.backend: redis` and configure `idkit.redis.uri` and
+`idkit.redis.key-prefix`. For JDBC, setting `auto-initialize: true` creates the lease table and
+worker rows at startup; set it to `false` when the schema is managed separately. `snowflake`
+keeps the standard 41/5/5 layout, while `flake` applies the configured timestamp, datacenter,
+worker, and sequence bit layout across the 64-bit ID. When Spring Boot Actuator is present,
+`idkitHealthIndicator` reports the lease state; when Micrometer is present, lease lifecycle
+counters and the active-lease gauge are registered automatically. Both integrations can be
+disabled with `idkit.health.enabled: false` or `idkit.metrics.enabled: false`.
 
 ## Quick start
 

@@ -42,6 +42,9 @@ tasks.test {
 tasks.named("check") {
     dependsOn(":idkit-redis:check")
     dependsOn(":idkit-jdbc:check")
+    dependsOn(":idkit-spring-boot-autoconfigure:check")
+    dependsOn(":idkit-spring-boot-starter-jdbc:check")
+    dependsOn(":idkit-spring-boot-starter-redis:check")
 }
 kotlin {
     jvmToolchain(11)
