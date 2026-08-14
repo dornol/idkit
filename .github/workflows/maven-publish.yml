@@ -8,7 +8,40 @@ permissions:
   contents: write
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Verify release tag matches project version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          PROJECT_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts)
+          test "$RELEASE_TAG" = "$PROJECT_VERSION"
+
+      - name: Verify all Maven publications
+        run: ./gradlew verifyPublicationModules --no-daemon
+
+      - name: Build and test all modules
+        run: ./gradlew check --no-daemon -Didkit.requireIntegrationTests=true
+
+      - name: Run Spring Boot consumer smoke tests
+        run: ./gradlew -p samples/spring-boot-consumer test --no-daemon -Didkit.requireIntegrationTests=true
+
   build-and-publish:
+    needs: verify
     runs-on: ubuntu-latest
     environment: dornol
 
@@ -27,7 +60,6 @@ jobs:
           mkdir -p ~/.gradle
           echo "${{ secrets.SIGNING_SECRET_KEY }}" | base64 --decode > ~/.gradle/secring.gpg
 
-
       - name: Set up gradle.properties
         run: |
           echo "mavenCentralUsername=${{ secrets.MAVEN_CENTRAL_USERNAME }}" >> ~/.gradle/gradle.properties
@@ -39,18 +71,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Verify release tag matches project version
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          PROJECT_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' build.gradle.kts)
-          test "$RELEASE_TAG" = "$PROJECT_VERSION"
-
-      - name: Verify all Maven publications
-        run: ./gradlew verifyPublicationModules --no-daemon
-
-      - name: Build & Publish
-        run: ./gradlew check publish --no-daemon
+      - name: Publish all Maven modules
+        run: ./gradlew publish --no-daemon
 
       - name: Create GitHub Release
         env:
