@@ -1,6 +1,7 @@
 package io.github.dornol.idkit.jdbc
 
 import io.github.dornol.idkit.worker.LeasedIdGenerator
+import io.github.dornol.idkit.worker.LeaseClock
 import io.github.dornol.idkit.worker.WorkerIdLease
 import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.worker.FencedOperationResult
@@ -28,6 +29,7 @@ import java.sql.SQLException
 import javax.sql.DataSource
 import java.lang.reflect.Proxy
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcWorkerIdLeaseStoreIntegrationTest {
@@ -92,6 +94,31 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
         assertTrue(lease!!.isValid)
         assertNull(store.tryAcquire(1, 2, "other", 900))
         lease.close()
+    }
+
+    @Test
+    fun `lease becomes invalid locally when its deadline passes before heartbeat runs`() {
+        val now = AtomicLong(System.currentTimeMillis())
+        val clockedStore = JdbcWorkerIdLeaseStore(
+            dataSource = dataSource,
+            scheduler = scheduler,
+            dialect = JdbcLeaseDialect.POSTGRESQL,
+            tableName = "idkit_test_deadline_lease",
+            clock = LeaseClock { now.get() },
+        )
+        clockedStore.initialize(1, 20)
+        val lease = clockedStore.tryAcquire(0, 20, "deadline", 1_000)!!
+        assertTrue(lease.isValid)
+
+        now.addAndGet(1_001)
+
+        assertFalse(lease.isValid)
+        lease.close()
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "UPDATE idkit_test_deadline_lease SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = 20 AND worker_id = 0",
+            ).use { it.executeUpdate() }
+        }
     }
 
     @Test

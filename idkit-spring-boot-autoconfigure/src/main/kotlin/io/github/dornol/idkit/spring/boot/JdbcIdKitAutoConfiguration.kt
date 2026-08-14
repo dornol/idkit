@@ -90,15 +90,39 @@ class JdbcIdKitAutoConfiguration {
     }
 
     private fun acquire(store: JdbcWorkerIdLeaseStore, properties: IdKitProperties): WorkerIdLease {
-        for (workerId in 0 until properties.workerCount) {
-            store.tryAcquire(
-                workerId = workerId,
-                datacenterId = properties.datacenterId,
-                owner = properties.owner,
-                ttlMillis = properties.leaseTtl.toMillis(),
-            )?.let { return it }
+        val delayMillis = properties.acquisitionRetryDelay.toMillis()
+        var lastFailure: Throwable? = null
+        repeat(properties.acquisitionAttempts) { attempt ->
+            try {
+                for (workerId in 0 until properties.workerCount) {
+                    store.tryAcquire(
+                        workerId = workerId,
+                        datacenterId = properties.datacenterId,
+                        owner = properties.owner,
+                        ttlMillis = properties.leaseTtl.toMillis(),
+                    )?.let { return it }
+                }
+            } catch (failure: RuntimeException) {
+                lastFailure = failure
+                log.warn("idkit JDBC lease acquisition attempt {} failed; retrying={}", attempt + 1, attempt + 1 < properties.acquisitionAttempts, failure)
+            }
+            if (attempt + 1 < properties.acquisitionAttempts) sleepBeforeRetry(delayMillis)
         }
-        error("No idkit JDBC worker identity is available: workerCount=" + properties.workerCount + ", datacenterId=" + properties.datacenterId)
+        error(
+            "No idkit JDBC worker identity is available or the lease backend did not recover: " +
+                    "workerCount=${properties.workerCount}, datacenterId=${properties.datacenterId}" +
+                    (lastFailure?.let { "; lastFailure=${it.message}" } ?: ""),
+        )
+    }
+
+    private fun sleepBeforeRetry(delayMillis: Long) {
+        if (delayMillis == 0L) return
+        try {
+            Thread.sleep(delayMillis)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("Interrupted while retrying JDBC worker lease acquisition", interrupted)
+        }
     }
 
     private fun validate(properties: IdKitProperties) {
@@ -106,6 +130,8 @@ class JdbcIdKitAutoConfiguration {
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
+        require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
+        require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
         require(properties.heartbeatFailureThreshold in 1..2) {
             "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
         }

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional lease remaining-TTL reporting through `WorkerIdLease` and Spring Boot health details.
 - Configurable consecutive heartbeat failure threshold for JDBC/Redis lease stores.
 - JDBC schema validation and dialect-specific migration SQL preview support.
+- Bounded startup acquisition retries with configurable delay for JDBC and Redis backends.
 
 ### Changed
 
@@ -23,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   supplied health, store, Redis client, and Redis connection beans.
 - Heartbeat failure thresholds are limited to values that invalidate before the configured lease
   TTL can normally expire.
+- Lease validity now fails closed at the locally known TTL deadline even if the heartbeat scheduler
+  is delayed or stopped.
 
 ## [3.0.0] - 2026-04-23
 

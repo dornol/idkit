@@ -13,6 +13,8 @@ class IdKitProperties {
     var owner: String = defaultOwner()
     var leaseTtl: Duration = Duration.ofSeconds(30)
     var heartbeatFailureThreshold: Int = 1
+    var acquisitionAttempts: Int = 3
+    var acquisitionRetryDelay: Duration = Duration.ofSeconds(1)
     var metrics: Metrics = Metrics()
     var generator: Generator = Generator()
     var jdbc: Jdbc = Jdbc()

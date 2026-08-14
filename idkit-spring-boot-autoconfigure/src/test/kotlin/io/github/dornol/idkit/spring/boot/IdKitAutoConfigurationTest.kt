@@ -5,6 +5,7 @@ import io.github.dornol.idkit.flake.FlakeIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import org.springframework.boot.actuate.health.HealthIndicator
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.boot.autoconfigure.AutoConfigurations
@@ -15,6 +16,8 @@ class IdKitAutoConfigurationTest {
     @Test
     fun `JDBC schema initialization is opt in by default`() {
         assertTrue(!IdKitProperties().jdbc.autoInitialize)
+        assertEquals(3, IdKitProperties().acquisitionAttempts)
+        assertEquals(java.time.Duration.ofSeconds(1), IdKitProperties().acquisitionRetryDelay)
     }
 
     @Test

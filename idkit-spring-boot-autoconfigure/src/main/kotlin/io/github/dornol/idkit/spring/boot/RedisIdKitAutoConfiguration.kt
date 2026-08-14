@@ -93,6 +93,8 @@ class RedisIdKitAutoConfiguration {
             datacenterId = properties.datacenterId,
             owner = properties.owner,
             ttlMillis = properties.leaseTtl.toMillis(),
+            acquisitionAttempts = properties.acquisitionAttempts,
+            acquisitionRetryDelayMillis = properties.acquisitionRetryDelay.toMillis(),
         )
 
     private fun validate(properties: IdKitProperties) {
@@ -100,6 +102,10 @@ class RedisIdKitAutoConfiguration {
         require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
         require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
         require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
-        require(properties.heartbeatFailureThreshold > 0) { "idkit.heartbeat-failure-threshold must be > 0" }
+        require(properties.heartbeatFailureThreshold in 1..2) {
+            "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
+        }
+        require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
+        require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
     }
 }

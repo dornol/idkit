@@ -200,10 +200,43 @@ class JdbcWorkerIdLeaseStore(
         }
     }
 
-    fun acquireAny(workerCount: Int, datacenterId: Int = 0, owner: String, ttlMillis: Long = 30_000L): WorkerIdLease {
-        initialize(workerCount, datacenterId)
-        for (workerId in 0 until workerCount) tryAcquire(workerId, datacenterId, owner, ttlMillis)?.let { return it }
-        throw IllegalStateException("No worker identity is available: datacenterId=$datacenterId, workerCount=$workerCount")
+    fun acquireAny(
+        workerCount: Int,
+        datacenterId: Int = 0,
+        owner: String,
+        ttlMillis: Long = 30_000L,
+        acquisitionAttempts: Int = 1,
+        acquisitionRetryDelayMillis: Long = 0L,
+    ): WorkerIdLease {
+        require(acquisitionAttempts > 0) { "acquisitionAttempts must be > 0" }
+        require(acquisitionRetryDelayMillis >= 0) { "acquisitionRetryDelayMillis must be >= 0" }
+        var lastFailure: Throwable? = null
+        repeat(acquisitionAttempts) { attempt ->
+            try {
+                initialize(workerCount, datacenterId)
+                for (workerId in 0 until workerCount) {
+                    tryAcquire(workerId, datacenterId, owner, ttlMillis)?.let { return it }
+                }
+            } catch (failure: RuntimeException) {
+                lastFailure = failure
+            }
+            if (attempt + 1 < acquisitionAttempts) sleepBeforeAcquisitionRetry(acquisitionRetryDelayMillis)
+        }
+        throw IllegalStateException(
+            "No worker identity is available or the lease backend did not recover: " +
+                    "datacenterId=$datacenterId, workerCount=$workerCount",
+            lastFailure,
+        )
+    }
+
+    private fun sleepBeforeAcquisitionRetry(delayMillis: Long) {
+        if (delayMillis == 0L) return
+        try {
+            Thread.sleep(delayMillis)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("Interrupted while retrying JDBC worker lease acquisition", interrupted)
+        }
     }
 
     private inner class JdbcWorkerIdLease(
@@ -218,7 +251,13 @@ class JdbcWorkerIdLeaseStore(
         private val heartbeatFailures = java.util.concurrent.atomic.AtomicInteger()
         @Volatile private var leaseUntilMillis = initialLeaseUntilMillis
         private val heartbeat = scheduler.scheduleAtFixedRate({ renew() }, ttlMillis / 3, (ttlMillis / 3).coerceAtLeast(1), TimeUnit.MILLISECONDS)
-        override val isValid: Boolean get() = valid.get()
+        override val isValid: Boolean
+            get() {
+                if (valid.get() && remainingTtlMillis <= 0) {
+                    invalidate(IllegalStateException("JDBC worker lease TTL elapsed locally"))
+                }
+                return valid.get()
+            }
         override val remainingTtlMillis: Long
             get() = (leaseUntilMillis - clock.millis()).coerceAtLeast(0L)
 

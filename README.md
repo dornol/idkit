@@ -126,6 +126,8 @@ idkit:
   owner: ${HOSTNAME:local}
   lease-ttl: 30s
   heartbeat-failure-threshold: 1
+  acquisition-attempts: 3
+  acquisition-retry-delay: 1s
   metrics:
     enabled: true
     prefix: idkit.lease
@@ -164,6 +166,14 @@ statements for review and application by Flyway, Liquibase, or an equivalent pro
 `heartbeat-failure-threshold` controls how many consecutive renewal failures are tolerated before
 the lease is invalidated. It accepts `1` or `2`; the default `1` fails closed immediately. This
 limit keeps the built-in heartbeat schedule from allowing the lease TTL to expire first.
+Both backends renew at roughly one-third of the configured TTL; a successful renewal resets the
+backend lease to the full TTL. If the scheduler is paused or the backend is unreachable until the
+known local deadline, the lease is invalidated locally and ID generation stops.
+
+`acquisition-attempts` and `acquisition-retry-delay` apply only while the application is starting.
+They allow a short database/Redis outage or a worker slot that is about to expire to recover without
+immediately failing startup. Once a lease is lost after startup, ID generation remains fail-closed;
+automatic reuse of the same worker identity is intentionally not performed.
 
 ## Quick start
 

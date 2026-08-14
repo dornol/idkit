@@ -80,6 +80,24 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
     }
 
     @Test
+    fun `lease becomes invalid when heartbeat scheduler is stopped before ttl expiry`() {
+        val isolatedScheduler = Executors.newSingleThreadScheduledExecutor()
+        val isolatedStore = RedisWorkerIdLeaseStore(
+            connection.sync(),
+            isolatedScheduler,
+            keyPrefix = "test:deadline:worker",
+        )
+        val lease = isolatedStore.tryAcquire(0, 9, "deadline", 150)!!
+        isolatedScheduler.shutdownNow()
+
+        Thread.sleep(250)
+
+        assertFalse(lease.isValid)
+        lease.close()
+        connection.sync().del("test:deadline:worker:0:9")
+    }
+
+    @Test
     fun `foreign owner cannot release an existing lease`() {
         val lease = store.tryAcquire(3, 0, "node-owner", 2_000)
         assertNotNull(lease)
