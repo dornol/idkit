@@ -42,6 +42,7 @@
     { "name": "idkit.metrics.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Enable Micrometer lease metrics when MeterRegistry is available." },
     { "name": "idkit.metrics.prefix", "type": "java.lang.String", "defaultValue": "idkit.lease", "description": "Micrometer metric name prefix." },
     { "name": "idkit.health.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Expose lease state through Actuator health." },
+    { "name": "idkit.endpoint.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Expose the idkit Actuator diagnostic endpoint." },
     { "name": "idkit.generator.type", "type": "java.lang.String", "defaultValue": "snowflake", "description": "Generator type: snowflake, flake, uuid_v7, ulid, or nanoid." },
     { "name": "idkit.generator.timestamp-bits", "type": "java.lang.Integer", "defaultValue": 41, "description": "Timestamp bit count for a custom flake layout." },
     { "name": "idkit.generator.datacenter-id-bits", "type": "java.lang.Integer", "defaultValue": 5, "description": "Datacenter bit count for a custom flake layout." },
