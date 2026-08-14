@@ -110,6 +110,37 @@ class RecoveringLeasedIdGeneratorTest {
         }
     }
 
+    @Test
+    fun `recovers after a prolonged backend outage with bounded backoff`() {
+        val scheduler = Executors.newSingleThreadScheduledExecutor()
+        val first = TestLease(1)
+        val replacement = TestLease(2)
+        val attempts = AtomicInteger()
+        val generator = RecoveringLeasedIdGenerator(
+            initialLease = first,
+            initialGenerator = generatorFor(first),
+            scheduler = scheduler,
+            recoveryRetryDelayMillis = 10,
+            recoveryRetryJitterMillis = 0,
+            recoveryMaxRetryDelayMillis = 40,
+            acquire = {
+                if (attempts.incrementAndGet() <= 3) error("simulated backend outage")
+                replacement
+            },
+            generatorFactory = ::generatorFor,
+        )
+
+        try {
+            first.valid = false
+            eventually(timeoutMillis = 2_000) { generator.currentLease === replacement }
+            assertEquals(4, attempts.get())
+            assertEquals(2, generator.nextId())
+        } finally {
+            generator.close()
+            scheduler.shutdownNow()
+        }
+    }
+
     private fun generatorFor(lease: WorkerIdLease): IdGenerator<Int> = object : IdGenerator<Int> {
         override fun nextId(): Int = lease.workerId
     }

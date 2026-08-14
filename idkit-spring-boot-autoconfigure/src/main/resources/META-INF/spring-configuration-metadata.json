@@ -31,6 +31,7 @@
     { "name": "idkit.lease-ttl", "type": "java.time.Duration", "defaultValue": "30s", "description": "Worker lease TTL." },
     { "name": "idkit.heartbeat-failure-threshold", "type": "java.lang.Integer", "defaultValue": 1, "description": "Consecutive heartbeat failures before invalidating the lease." },
     { "name": "idkit.heartbeat-interval", "type": "java.time.Duration", "description": "Optional heartbeat interval; defaults to one-third of the lease TTL." },
+    { "name": "idkit.startup-jitter", "type": "java.time.Duration", "defaultValue": "0s", "description": "Random delay before startup lease acquisition." },
     { "name": "idkit.backend-operation-timeout", "type": "java.time.Duration", "defaultValue": "5s", "description": "Timeout for backend lease operations." },
     { "name": "idkit.acquisition-attempts", "type": "java.lang.Integer", "defaultValue": 3, "description": "Maximum lease acquisition attempts during startup." },
     { "name": "idkit.acquisition-retry-delay", "type": "java.time.Duration", "defaultValue": "1s", "description": "Delay between lease acquisition attempts." },

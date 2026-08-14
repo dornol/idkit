@@ -132,6 +132,8 @@ idkit:
   backend-operation-timeout: 5s
   # Optional. Defaults to lease-ttl / 3 (10s with the defaults above).
   # heartbeat-interval: 5s
+  # Optional random delay before startup acquisition, useful for large fleets.
+  startup-jitter: 0s
   heartbeat-failure-threshold: 1
   acquisition-attempts: 3
   acquisition-retry-delay: 1s
@@ -213,6 +215,8 @@ When many instances share one backend, recovery retries use exponential backoff 
 (`retry-delay`, `retry-jitter`, and `max-retry-delay`) to avoid a synchronized reconnect storm.
 `lease-namespace` isolates services sharing the same Redis key prefix or JDBC table; it does not
 change the generated ID format, so it is appropriate when services have separate ID domains.
+For large fleets, set `startup-jitter` (for example `5s`) to spread startup acquisition and
+schema checks over time.
 For Java callers, use `RecoveringLeasedIdGenerator.create(...)` with
 `Supplier<WorkerIdLease>` and `Function<WorkerIdLease, IdGenerator<T>>` callbacks.
 automatic reuse of the same worker identity is intentionally not performed.

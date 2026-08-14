@@ -19,6 +19,8 @@ class IdKitProperties {
     var heartbeatFailureThreshold: Int = 1
     /** Optional heartbeat interval; defaults to one-third of the lease TTL. */
     var heartbeatInterval: Duration? = null
+    /** Random delay before startup lease acquisition; disabled by default. */
+    var startupJitter: Duration = Duration.ZERO
     var backendOperationTimeout: Duration = Duration.ofSeconds(5)
     var acquisitionAttempts: Int = 3
     var acquisitionRetryDelay: Duration = Duration.ofSeconds(1)

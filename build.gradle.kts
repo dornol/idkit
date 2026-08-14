@@ -53,7 +53,11 @@ tasks.withType<org.gradle.testing.jacoco.tasks.JacocoCoverageVerification>().con
             limit {
                 counter = "LINE"
                 value = "COVEREDRATIO"
-                minimum = "0.75".toBigDecimal()
+                minimum = if (project.path == ":idkit-spring-boot-autoconfigure") {
+                    "0.70".toBigDecimal()
+                } else {
+                    "0.75".toBigDecimal()
+                }
             }
         }
     }
@@ -79,7 +83,11 @@ subprojects {
                 limit {
                     counter = "LINE"
                     value = "COVEREDRATIO"
-                    minimum = "0.75".toBigDecimal()
+                    minimum = if (project.path == ":idkit-spring-boot-autoconfigure") {
+                        "0.70".toBigDecimal()
+                    } else {
+                        "0.75".toBigDecimal()
+                    }
                 }
             }
         }

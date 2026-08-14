@@ -83,6 +83,7 @@ class IdKitSpringBootIntegrationTest {
             .withBean(MeterRegistry::class.java, Supplier { registry })
             .withPropertyValues(
                 "idkit.backend=jdbc",
+                "idkit.lease-namespace=springjdbc",
                 "idkit.worker-count=4",
                 "idkit.owner=spring-jdbc-test",
                 "idkit.jdbc.auto-initialize=true",
@@ -120,6 +121,7 @@ class IdKitSpringBootIntegrationTest {
             .withBean(MeterRegistry::class.java, Supplier { registry })
             .withPropertyValues(
                 "idkit.backend=redis",
+                "idkit.lease-namespace=springredis",
                 "idkit.worker-count=4",
                 "idkit.worker-id=2",
                 "idkit.owner=spring-redis-test",

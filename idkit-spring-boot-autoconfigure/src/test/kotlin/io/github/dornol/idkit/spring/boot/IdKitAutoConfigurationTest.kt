@@ -26,6 +26,7 @@ class IdKitAutoConfigurationTest {
         assertEquals(null, IdKitProperties().leaseNamespace)
         assertEquals(java.time.Duration.ofMillis(500), IdKitProperties().recovery.retryJitter)
         assertEquals(java.time.Duration.ofSeconds(30), IdKitProperties().recovery.maxRetryDelay)
+        assertEquals(java.time.Duration.ZERO, IdKitProperties().startupJitter)
     }
 
     @Test

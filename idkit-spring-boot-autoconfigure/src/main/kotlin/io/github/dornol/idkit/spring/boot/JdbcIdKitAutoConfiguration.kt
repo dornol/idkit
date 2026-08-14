@@ -24,6 +24,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.ApplicationContext
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ThreadLocalRandom
 import javax.sql.DataSource
 
 @AutoConfiguration(after = [DataSourceAutoConfiguration::class])
@@ -87,6 +88,7 @@ class JdbcIdKitAutoConfiguration {
     ): WorkerIdLease {
         validate(properties)
         IdKitGeneratorFactory.validate(properties)
+        sleepStartupJitter(properties.startupJitter.toMillis())
         if (properties.jdbc.autoInitialize) {
             store.initialize(properties.workerCount, properties.datacenterId)
         }
@@ -184,6 +186,9 @@ class JdbcIdKitAutoConfiguration {
         require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
             "idkit.backend-operation-timeout must be positive"
         }
+        require(!properties.startupJitter.isNegative) {
+            "idkit.startup-jitter must not be negative"
+        }
         require(!properties.jdbc.clockSkewAllowance.isNegative) {
             "idkit.jdbc.clock-skew-allowance must not be negative"
         }
@@ -204,6 +209,17 @@ class JdbcIdKitAutoConfiguration {
     private fun validateLeaseNamespace(properties: IdKitProperties) {
         require(properties.leaseNamespace?.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) != false) {
             "idkit.lease-namespace must be a simple identifier"
+        }
+    }
+
+    private fun sleepStartupJitter(maxDelayMillis: Long) {
+        if (maxDelayMillis <= 0L) return
+        val delay = ThreadLocalRandom.current().nextLong(maxDelayMillis + 1)
+        try {
+            Thread.sleep(delay)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("Interrupted during idkit startup jitter", interrupted)
         }
     }
 

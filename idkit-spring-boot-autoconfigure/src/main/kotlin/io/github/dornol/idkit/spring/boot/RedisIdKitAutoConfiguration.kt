@@ -21,6 +21,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ThreadLocalRandom
 import io.lettuce.core.RedisURI
 
 @AutoConfiguration
@@ -95,6 +96,7 @@ class RedisIdKitAutoConfiguration {
     ): WorkerIdLease {
         validate(properties)
         IdKitGeneratorFactory.validate(properties)
+        sleepStartupJitter(properties.startupJitter.toMillis())
         return acquire(store, properties)
     }
 
@@ -186,6 +188,9 @@ class RedisIdKitAutoConfiguration {
         require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
             "idkit.backend-operation-timeout must be positive"
         }
+        require(!properties.startupJitter.isNegative) {
+            "idkit.startup-jitter must not be negative"
+        }
         require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
         require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
         require(!properties.recovery.retryDelay.isZero && !properties.recovery.retryDelay.isNegative) {
@@ -221,6 +226,17 @@ class RedisIdKitAutoConfiguration {
     private fun validateLeaseNamespace(properties: IdKitProperties) {
         require(properties.leaseNamespace?.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) != false) {
             "idkit.lease-namespace must be a simple identifier"
+        }
+    }
+
+    private fun sleepStartupJitter(maxDelayMillis: Long) {
+        if (maxDelayMillis <= 0L) return
+        val delay = ThreadLocalRandom.current().nextLong(maxDelayMillis + 1)
+        try {
+            Thread.sleep(delay)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("Interrupted during idkit startup jitter", interrupted)
         }
     }
 
