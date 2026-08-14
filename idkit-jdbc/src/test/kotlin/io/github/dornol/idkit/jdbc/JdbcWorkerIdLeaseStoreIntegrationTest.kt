@@ -163,15 +163,20 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
 
     @Test
     fun `closing store releases all active leases`() {
-        store.initialize(1, 9)
-        val lease = store.tryAcquire(0, 9, "shutdown", 30_000)
+        val closableStore = JdbcWorkerIdLeaseStore(dataSource, scheduler, tableName = "idkit_test_worker_lease")
+        closableStore.initialize(1, 9)
+        val lease = closableStore.tryAcquire(0, 9, "shutdown", 30_000)
         assertNotNull(lease)
-        assertTrue(store.inspect(0, 9)!!.isHeld)
+        assertTrue(closableStore.inspect(0, 9)!!.isHeld)
 
-        store.close()
+        closableStore.close()
+        closableStore.close()
 
-        assertFalse(store.inspect(0, 9)!!.isHeld)
+        assertFalse(closableStore.inspect(0, 9)!!.isHeld)
         assertFalse(lease!!.isValid)
+        assertThrows<IllegalStateException> {
+            closableStore.tryAcquire(0, 9, "after-close", 30_000)
+        }
     }
 
     @Test

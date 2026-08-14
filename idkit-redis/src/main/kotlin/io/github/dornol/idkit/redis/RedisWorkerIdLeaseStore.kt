@@ -37,6 +37,7 @@ class RedisWorkerIdLeaseStore(
     }
 
     private val activeLeases = ConcurrentHashMap.newKeySet<RedisWorkerIdLease>()
+    private val closed = AtomicBoolean(false)
 
     override fun tryAcquire(
         workerId: Int,
@@ -44,6 +45,7 @@ class RedisWorkerIdLeaseStore(
         owner: String,
         ttlMillis: Long,
     ): WorkerIdLease? {
+        ensureOpen()
         require(workerId >= 0) { "workerId must be >= 0" }
         require(datacenterId >= 0) { "datacenterId must be >= 0" }
         require(owner.isNotBlank()) { "owner must not be blank" }
@@ -104,6 +106,7 @@ class RedisWorkerIdLeaseStore(
         acquisitionAttempts: Int = 1,
         acquisitionRetryDelayMillis: Long = 0L,
     ): WorkerIdLease {
+        ensureOpen()
         require(workerCount > 0) { "workerCount must be > 0" }
         require(acquisitionAttempts > 0) { "acquisitionAttempts must be > 0" }
         require(acquisitionRetryDelayMillis >= 0) { "acquisitionRetryDelayMillis must be >= 0" }
@@ -133,6 +136,10 @@ class RedisWorkerIdLeaseStore(
             Thread.currentThread().interrupt()
             throw IllegalStateException("Interrupted while retrying Redis worker lease acquisition", interrupted)
         }
+    }
+
+    private fun ensureOpen() {
+        check(!closed.get()) { "Redis worker lease store is already closed" }
     }
 
     private fun releaseAcquiredLease(key: String, storedToken: String) {
@@ -236,6 +243,7 @@ class RedisWorkerIdLeaseStore(
     }
 
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         activeLeases.toList().forEach { it.close() }
     }
 

@@ -28,6 +28,7 @@ class JdbcWorkerIdLeaseStore(
 ) : WorkerIdLeaseStore, AutoCloseable {
 
     private val activeLeases = ConcurrentHashMap.newKeySet<JdbcWorkerIdLease>()
+    private val closed = AtomicBoolean(false)
 
     init {
         requireValidTableName(tableName)
@@ -41,6 +42,7 @@ class JdbcWorkerIdLeaseStore(
      * This performs no DDL and is useful when schema changes are managed by Flyway/Liquibase.
      */
     fun validateSchema(workerCount: Int, datacenterId: Int = 0) {
+        ensureOpen()
         require(workerCount > 0) { "workerCount must be > 0" }
         require(datacenterId >= 0) { "datacenterId must be >= 0" }
         dataSource.connection.use { connection ->
@@ -86,6 +88,7 @@ class JdbcWorkerIdLeaseStore(
     }
 
     fun initialize(workerCount: Int, datacenterId: Int = 0) {
+        ensureOpen()
         require(workerCount > 0) { "workerCount must be > 0" }
         require(datacenterId >= 0) { "datacenterId must be >= 0" }
         dataSource.connection.use { connection ->
@@ -153,6 +156,7 @@ class JdbcWorkerIdLeaseStore(
     }
 
     override fun tryAcquire(workerId: Int, datacenterId: Int, owner: String, ttlMillis: Long): WorkerIdLease? {
+        ensureOpen()
         require(workerId >= 0) { "workerId must be >= 0" }
         require(datacenterId >= 0) { "datacenterId must be >= 0" }
         require(owner.isNotBlank()) { "owner must not be blank" }
@@ -215,6 +219,7 @@ class JdbcWorkerIdLeaseStore(
         acquisitionAttempts: Int = 1,
         acquisitionRetryDelayMillis: Long = 0L,
     ): WorkerIdLease {
+        ensureOpen()
         require(acquisitionAttempts > 0) { "acquisitionAttempts must be > 0" }
         require(acquisitionRetryDelayMillis >= 0) { "acquisitionRetryDelayMillis must be >= 0" }
         var lastFailure: Throwable? = null
@@ -244,6 +249,10 @@ class JdbcWorkerIdLeaseStore(
             Thread.currentThread().interrupt()
             throw IllegalStateException("Interrupted while retrying JDBC worker lease acquisition", interrupted)
         }
+    }
+
+    private fun ensureOpen() {
+        check(!closed.get()) { "JDBC worker lease store is already closed" }
     }
 
     private fun releaseAcquiredLease(workerId: Int, datacenterId: Int, token: String) {
@@ -338,6 +347,7 @@ class JdbcWorkerIdLeaseStore(
     }
 
     override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         activeLeases.toList().forEach { it.close() }
     }
 

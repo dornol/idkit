@@ -135,19 +135,24 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
 
     @Test
     fun `inspect reports ttl and shutdown releases active lease`() {
-        val lease = store.tryAcquire(0, 2, "inspect", 5_000)
+        val closableStore = RedisWorkerIdLeaseStore(connection.sync(), scheduler, keyPrefix = "test:closable")
+        val lease = closableStore.tryAcquire(0, 2, "inspect", 5_000)
         assertNotNull(lease)
-        val held = store.inspect(0, 2)
+        val held = closableStore.inspect(0, 2)
         assertTrue(held.isHeld)
         assertEquals("inspect", held.owner)
         assertNotNull(held.tokenFingerprint)
         assertTrue(held.fencingToken > 0)
         assertTrue(held.remainingTtlMillis > 0)
 
-        store.close()
+        closableStore.close()
+        closableStore.close()
 
-        assertFalse(store.inspect(0, 2).isHeld)
+        assertFalse(closableStore.inspect(0, 2).isHeld)
         assertFalse(lease!!.isValid)
+        assertThrows<IllegalStateException> {
+            closableStore.tryAcquire(0, 2, "after-close", 5_000)
+        }
     }
 
     @Test
