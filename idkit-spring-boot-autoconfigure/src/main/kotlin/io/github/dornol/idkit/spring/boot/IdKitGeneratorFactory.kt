@@ -50,6 +50,7 @@ internal object IdKitGeneratorFactory {
                 workerId = lease.workerId,
                 clockRegressionTolerance = generator.clockRegressionTolerance,
             )
+            else -> error("Generator type ${generator.type} does not use a worker lease")
         }
     }
 }

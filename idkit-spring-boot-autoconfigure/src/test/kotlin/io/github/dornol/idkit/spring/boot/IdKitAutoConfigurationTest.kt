@@ -2,6 +2,9 @@ package io.github.dornol.idkit.spring.boot
 
 import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.flake.FlakeIdGenerator
+import io.github.dornol.idkit.nanoid.NanoIdGenerator
+import io.github.dornol.idkit.ulid.UlidIdGenerator
+import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import io.github.dornol.idkit.worker.LeaseRecoveryStatus
 import org.springframework.boot.actuate.health.HealthIndicator
@@ -41,6 +44,22 @@ class IdKitAutoConfigurationTest {
             .run { context ->
                 assertTrue(context.getBeansOfType(IdGenerator::class.java).isEmpty())
             }
+    }
+
+    @Test
+    fun `creates local generators without a lease backend`() {
+        listOf(
+            "UUID_V7" to UuidV7IdGenerator::class.java,
+            "ULID" to UlidIdGenerator::class.java,
+            "NANOID" to NanoIdGenerator::class.java,
+        ).forEach { (type, expected) ->
+            ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(LocalIdKitAutoConfiguration::class.java))
+                .withPropertyValues("idkit.generator.type=$type")
+                .run { context ->
+                    assertEquals(expected, context.getBean(IdGenerator::class.java)::class.java)
+                }
+        }
     }
 
     @Test

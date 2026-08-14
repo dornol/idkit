@@ -42,13 +42,15 @@
     { "name": "idkit.metrics.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Enable Micrometer lease metrics when MeterRegistry is available." },
     { "name": "idkit.metrics.prefix", "type": "java.lang.String", "defaultValue": "idkit.lease", "description": "Micrometer metric name prefix." },
     { "name": "idkit.health.enabled", "type": "java.lang.Boolean", "defaultValue": true, "description": "Expose lease state through Actuator health." },
-    { "name": "idkit.generator.type", "type": "java.lang.String", "defaultValue": "snowflake", "description": "Generator type: snowflake or flake." },
+    { "name": "idkit.generator.type", "type": "java.lang.String", "defaultValue": "snowflake", "description": "Generator type: snowflake, flake, uuid_v7, ulid, or nanoid." },
     { "name": "idkit.generator.timestamp-bits", "type": "java.lang.Integer", "defaultValue": 41, "description": "Timestamp bit count for a custom flake layout." },
     { "name": "idkit.generator.datacenter-id-bits", "type": "java.lang.Integer", "defaultValue": 5, "description": "Datacenter bit count for a custom flake layout." },
     { "name": "idkit.generator.worker-id-bits", "type": "java.lang.Integer", "defaultValue": 5, "description": "Worker bit count for a custom flake layout." },
     { "name": "idkit.generator.timestamp-divisor", "type": "java.lang.Long", "defaultValue": 1, "description": "Timestamp resolution divisor." },
     { "name": "idkit.generator.epoch", "type": "java.time.Instant", "defaultValue": "1970-01-01T00:00:00Z", "description": "Custom generator epoch." },
     { "name": "idkit.generator.clock-regression-tolerance", "type": "java.time.Duration", "defaultValue": "10ms", "description": "Clock regression tolerance." },
+    { "name": "idkit.generator.nano-size", "type": "java.lang.Integer", "defaultValue": 21, "description": "NanoID length when generator type is nanoid." },
+    { "name": "idkit.generator.nano-alphabet", "type": "java.lang.String", "description": "NanoID alphabet when generator type is nanoid." },
     { "name": "idkit.jdbc.auto-initialize", "type": "java.lang.Boolean", "defaultValue": false, "description": "Create the JDBC lease table and worker rows at startup." },
     { "name": "idkit.jdbc.validate-schema", "type": "java.lang.Boolean", "defaultValue": false, "description": "Validate the JDBC lease table, fencing column, and worker rows at startup without changing schema." },
     { "name": "idkit.jdbc.dialect", "type": "java.lang.String", "defaultValue": "POSTGRESQL", "description": "JDBC dialect." },
@@ -60,7 +62,7 @@
   ],
   "hints": [
     { "name": "idkit.backend", "values": [{ "value": "jdbc" }, { "value": "redis" }] },
-    { "name": "idkit.generator.type", "values": [{ "value": "snowflake" }, { "value": "flake" }] },
+    { "name": "idkit.generator.type", "values": [{ "value": "snowflake" }, { "value": "flake" }, { "value": "uuid_v7" }, { "value": "ulid" }, { "value": "nanoid" }] },
     { "name": "idkit.jdbc.dialect", "values": [{ "value": "POSTGRESQL" }, { "value": "MYSQL" }, { "value": "MARIADB" }, { "value": "MSSQL" }, { "value": "ORACLE" }] }
   ]
 }

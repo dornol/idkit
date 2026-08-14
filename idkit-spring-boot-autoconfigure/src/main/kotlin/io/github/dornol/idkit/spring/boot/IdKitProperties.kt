@@ -52,9 +52,11 @@ class IdKitProperties {
         var timestampDivisor: Long = 1L
         var epoch: Instant = Instant.EPOCH
         var clockRegressionTolerance: Duration = Duration.ofMillis(10)
+        var nanoSize: Int = 21
+        var nanoAlphabet: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
     }
 
-    enum class Type { SNOWFLAKE, FLAKE }
+    enum class Type { SNOWFLAKE, FLAKE, UUID_V7, ULID, NANOID }
 
     class Jdbc {
         /**
