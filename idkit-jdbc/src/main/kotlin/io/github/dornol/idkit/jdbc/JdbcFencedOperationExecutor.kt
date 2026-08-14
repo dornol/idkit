@@ -11,7 +11,7 @@ class JdbcFencedOperationExecutor(
     private val dialect: JdbcLeaseDialect = JdbcLeaseDialect.POSTGRESQL,
     private val tableName: String = "idkit_fencing_token",
 ) : FencedOperationExecutor {
-    init { require(tableName.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) { "tableName must be a simple SQL identifier" } }
+    init { requireSimpleSqlIdentifier(tableName) }
 
     fun initialize() = JdbcFencingTokenValidator(dataSource, dialect, tableName).initialize()
 

@@ -24,7 +24,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.ApplicationContext
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ThreadLocalRandom
 import javax.sql.DataSource
 
 @AutoConfiguration(after = [DataSourceAutoConfiguration::class])
@@ -86,9 +85,10 @@ class JdbcIdKitAutoConfiguration {
         store: JdbcWorkerIdLeaseStore,
         properties: IdKitProperties,
     ): WorkerIdLease {
-        validate(properties)
+        IdKitAutoConfigurationSupport.validateCommon(properties)
+        IdKitAutoConfigurationSupport.validateJdbc(properties)
         IdKitGeneratorFactory.validate(properties)
-        sleepStartupJitter(properties.startupJitter.toMillis())
+        IdKitAutoConfigurationSupport.sleepStartupJitter(properties.startupJitter.toMillis())
         if (properties.jdbc.autoInitialize) {
             store.initialize(properties.workerCount, properties.datacenterId)
         }
@@ -127,100 +127,21 @@ class JdbcIdKitAutoConfiguration {
     }
 
     private fun acquire(store: JdbcWorkerIdLeaseStore, properties: IdKitProperties): WorkerIdLease {
-        val delayMillis = properties.acquisitionRetryDelay.toMillis()
-        var lastFailure: Throwable? = null
-        repeat(properties.acquisitionAttempts) { attempt ->
-            try {
-                for (workerId in properties.workerIds()) {
-                    store.tryAcquire(
-                        workerId = workerId,
-                        datacenterId = properties.datacenterId,
-                        owner = properties.owner,
-                        ttlMillis = properties.leaseTtl.toMillis(),
-                    )?.let { return it }
-                }
-            } catch (failure: RuntimeException) {
-                lastFailure = failure
-                log.warn("idkit JDBC lease acquisition attempt {} failed; retrying={}", attempt + 1, attempt + 1 < properties.acquisitionAttempts, failure)
-            }
-            if (attempt + 1 < properties.acquisitionAttempts) sleepBeforeRetry(delayMillis)
-        }
-        error(
-            "No idkit JDBC worker identity is available or the lease backend did not recover: " +
-                    "workerCount=${properties.workerCount}, datacenterId=${properties.datacenterId}" +
-                    (lastFailure?.let { "; lastFailure=${it.message}" } ?: ""),
+        return IdKitAutoConfigurationSupport.acquireConfigured(
+            properties = properties,
+            backend = "JDBC",
+            tryAcquire = { workerId ->
+                store.tryAcquire(
+                    workerId = workerId,
+                    datacenterId = properties.datacenterId,
+                    owner = properties.owner,
+                    ttlMillis = properties.leaseTtl.toMillis(),
+                )
+            },
+            onFailure = { attempt, retrying, failure ->
+                log.warn("idkit JDBC lease acquisition attempt {} failed; retrying={}", attempt, retrying, failure)
+            },
         )
-    }
-
-    private fun sleepBeforeRetry(delayMillis: Long) {
-        if (delayMillis == 0L) return
-        try {
-            Thread.sleep(delayMillis)
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("Interrupted while retrying JDBC worker lease acquisition", interrupted)
-        }
-    }
-
-    private fun IdKitProperties.workerIds(): IntRange =
-        workerId?.let { it..it } ?: (0 until workerCount)
-
-    private fun validate(properties: IdKitProperties) {
-        validateLeaseNamespace(properties)
-        require(properties.workerCount > 0) { "idkit.worker-count must be > 0" }
-        require(properties.workerId == null || properties.workerId!! in 0 until properties.workerCount) {
-            "idkit.worker-id must be between 0 and worker-count - 1"
-        }
-        require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
-        require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
-        require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
-        require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
-        require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
-        require(!properties.recovery.retryDelay.isZero && !properties.recovery.retryDelay.isNegative) {
-            "idkit.recovery.retry-delay must be positive"
-        }
-        require(properties.heartbeatFailureThreshold in 1..2) {
-            "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
-        }
-        validateHeartbeatInterval(properties)
-        require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
-            "idkit.backend-operation-timeout must be positive"
-        }
-        require(!properties.startupJitter.isNegative) {
-            "idkit.startup-jitter must not be negative"
-        }
-        require(!properties.jdbc.clockSkewAllowance.isNegative) {
-            "idkit.jdbc.clock-skew-allowance must not be negative"
-        }
-        require(properties.jdbc.dataSourceBeanName?.isNotBlank() != false) {
-            "idkit.jdbc.data-source-bean-name must not be blank"
-        }
-        require(!properties.recovery.retryJitter.isNegative) {
-            "idkit.recovery.retry-jitter must not be negative"
-        }
-        require(!properties.recovery.maxRetryDelay.isNegative && !properties.recovery.maxRetryDelay.isZero) {
-            "idkit.recovery.max-retry-delay must be positive"
-        }
-        require(properties.recovery.maxRetryDelay >= properties.recovery.retryDelay) {
-            "idkit.recovery.max-retry-delay must be >= retry-delay"
-        }
-    }
-
-    private fun validateLeaseNamespace(properties: IdKitProperties) {
-        require(properties.leaseNamespace?.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) != false) {
-            "idkit.lease-namespace must be a simple identifier"
-        }
-    }
-
-    private fun sleepStartupJitter(maxDelayMillis: Long) {
-        if (maxDelayMillis <= 0L) return
-        val delay = ThreadLocalRandom.current().nextLong(maxDelayMillis + 1)
-        try {
-            Thread.sleep(delay)
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("Interrupted during idkit startup jitter", interrupted)
-        }
     }
 
     private fun IdKitProperties.Jdbc.tableNameForNamespace(namespace: String?): String =

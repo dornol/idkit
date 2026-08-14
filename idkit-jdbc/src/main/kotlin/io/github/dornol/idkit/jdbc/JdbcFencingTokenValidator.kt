@@ -126,7 +126,7 @@ class JdbcFencingTokenValidator(
         }
 
     private fun requireResource(resource: String) { require(resource.isNotBlank()) { "resource must not be blank" } }
-    private fun requireIdentifier(value: String) { require(value.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) { "tableName must be a simple SQL identifier" } }
+    private fun requireIdentifier(value: String) { requireSimpleSqlIdentifier(value) }
 
     private companion object {
         private const val MAX_CONFLICT_RETRIES = 8

@@ -39,7 +39,7 @@ class JdbcWorkerIdLeaseStore(
     }
 
     init {
-        requireValidTableName(tableName)
+        requireSimpleSqlIdentifier(tableName)
         require(heartbeatFailureThreshold in 1..2) {
             "heartbeatFailureThreshold must be between 1 and 2 so the lease fails before TTL expiry"
         }
@@ -396,9 +396,4 @@ class JdbcWorkerIdLeaseStore(
     private fun java.sql.Connection.prepareLeaseStatement(sql: String): java.sql.PreparedStatement =
         prepareStatement(sql).also { if (statementTimeoutSeconds > 0) it.queryTimeout = statementTimeoutSeconds }
 
-    private companion object {
-        fun requireValidTableName(value: String) {
-            require(value.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))) { "tableName must be a simple SQL identifier" }
-        }
-    }
 }

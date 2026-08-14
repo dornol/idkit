@@ -7,29 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [3.2.0] - 2026-08-14
+
+Operational resilience, distributed lease recovery, and release tooling improvements.
+
 ### Added
 
-- Java-friendly factories for UUID v7, ULID, and NanoID generators.
-- Optional lease remaining-TTL reporting through `WorkerIdLease` and Spring Boot health details.
-- Configurable consecutive heartbeat failure threshold for JDBC/Redis lease stores.
-- JDBC schema validation and dialect-specific migration SQL preview support.
-- Bounded startup acquisition retries with configurable delay for JDBC and Redis backends.
-- Optional automatic lease recovery that reacquires a worker identity and rebuilds the generator
-  after lease loss.
+- Automatic lease recovery after heartbeat failure, including generator reconstruction and
+  configurable exponential backoff, jitter, and maximum retry delay.
+- Lease namespaces so independent services can share one JDBC table or Redis key prefix while
+  keeping worker allocation domains separate.
+- Startup jitter and bounded acquisition retries to reduce synchronized startup load and reconnect
+  storms across large fleets.
+- Chaos and prolonged-outage coverage for lease recovery, including in-flight recovery shutdown
+  races and repeated backend failures.
+- Shared Spring Boot configuration validation and acquisition policy to keep JDBC and Redis
+  behavior consistent.
 
 ### Changed
 
-- JDBC fencing validation and fenced operations now use atomic compare-and-set handling, including
-  MySQL/MariaDB affected-row differences and transient dialect conflicts.
-- JDBC schema auto-initialization is now opt-in by default in the Spring Boot starter.
-- Spring Boot validates custom Flake layouts before acquiring a worker lease and preserves user
-  supplied health, store, Redis client, and Redis connection beans.
-- Heartbeat failure thresholds are limited to values that invalidate before the configured lease
-  TTL can normally expire.
-- Lease validity now fails closed at the locally known TTL deadline even if the heartbeat scheduler
-  is delayed or stopped.
-- Transient heartbeat connection failures now keep the last confirmed lease usable until its local
-  TTL deadline; definitive ownership-loss responses still follow the configured failure threshold.
+- Redis local lease deadlines now use a monotonic effective clock, preventing a wall-clock rollback
+  from extending a locally held lease.
+- SQL identifier validation is centralized across JDBC lease and fencing components.
+- Spring Boot auto-configuration coverage is now held to the same 75% minimum as other modules.
+- Release metadata and publication verification cover all six Maven Central artifacts.
+
+### Fixed
+
+- Lease recovery remains usable through transient backend failures until the last confirmed local
+  TTL deadline, while definitive ownership loss still fails closed.
+- Recovery and startup retry paths preserve interruption status and avoid leaking replacement leases
+  during close races.
+
+## [3.1.0] - 2026-08-13
+
+Operational lease and distributed fencing improvements:
+
+- Added JDBC and Redis lease integrations with database dialect support, health inspection,
+  heartbeat callbacks, graceful shutdown, Micrometer metrics, and fencing tokens.
+- Added durable JDBC/Redis fencing validators and atomic fenced operation executors.
+- Added concurrent, rollback, stale-owner, and multi-database integration coverage.
+
+### Migration from 3.0.0
+
+- JDBC lease initialization adds `fencing_token` to existing lease tables when missing; production
+  deployments may pre-apply this additive schema change with their migration tool.
+- Configure the same Redis key prefix during rolling upgrades.
+- Fencing protects a downstream side effect only when the token check and side effect use one of
+  the provided atomic executors.
 
 ## [3.0.0] - 2026-04-23
 
@@ -232,6 +259,8 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[3.2.0]: https://github.com/dornol/idkit/releases/tag/3.2.0
+[3.1.0]: https://github.com/dornol/idkit/releases/tag/3.1.0
 [3.0.0]: https://github.com/dornol/idkit/releases/tag/3.0.0
 [2.3.0]: https://github.com/dornol/idkit/releases/tag/2.3.0
 [2.2.0]: https://github.com/dornol/idkit/releases/tag/2.2.0
@@ -241,49 +270,3 @@ try {
 [1.2.1]: https://github.com/dornol/idkit/releases/tag/1.2.1
 [1.2.0]: https://github.com/dornol/idkit/releases/tag/1.2.0
 [1.1.0]: https://github.com/dornol/idkit/releases/tag/1.1.0
-## [3.1.0] - 2026-08-13
-
-Operational lease and distributed fencing improvements:
-
-- Added JDBC and Redis lease integrations with database dialect support, health inspection,
-  heartbeat callbacks, graceful shutdown, Micrometer metrics, and fencing tokens.
-- Added durable JDBC/Redis fencing validators and atomic fenced operation executors.
-- Added concurrent, rollback, stale-owner, and multi-database integration coverage.
-
-### Migration from 3.0.0
-
-- JDBC lease initialization adds `fencing_token` to existing lease tables when missing; production
-  deployments may pre-apply this additive schema change with their migration tool.
-- Configure the same Redis key prefix during rolling upgrades.
-- Fencing protects a downstream side effect only when the token check and side effect use one of
-  the provided atomic executors.
-
-### Unreleased
-
-- Hardened Flake and UUID v7 timestamp arithmetic against `Long`/field overflow.
-- CI now verifies JDK 17 and JDK 21 builds.
-- Updated the Kotlin Gradle plugin to 2.3.21 for current JDK tooling compatibility.
-- Added UUID v7 field decomposition and Java-friendly Snowflake creation.
-- Added a storage-neutral worker identity lease contract for distributed deployments.
-- Added a scheduled/manual JMH smoke workflow for performance regressions.
-- Enabled Kotlin ABI validation so accidental public API breaks fail the build.
-- Added the optional `idkit-redis` module with atomic Redis worker leases, token-checked renewal,
-  TTL expiry, and fail-closed generator support.
-- Configured `idkit-redis` as a separately publishable Maven Central artifact.
-- Added the optional `idkit-jdbc` module with common transaction/row-lock lease logic and
-  PostgreSQL/MySQL dialects.
-- Added built-in JDBC dialects for MariaDB, Microsoft SQL Server, and Oracle.
-- Added JDBC lease inspection snapshots and heartbeat failure callbacks for operational monitoring.
-- Added matching Redis lease inspection, heartbeat failure callbacks, graceful shutdown release,
-  and optional Micrometer metrics.
-- Added injectable lease clocks for deterministic expiry testing and masked raw lease tokens in
-  operational status snapshots.
-- Added monotonically increasing fencing tokens to JDBC and Redis leases, including automatic JDBC
-  schema migration for existing lease tables.
-- Added `FencingTokenValidator`, stale-token exception details, and an atomic in-memory validator
-  for downstream resource protection.
-- Added durable JDBC and Redis fencing token validators with atomic compare-and-set updates.
-- Added JDBC transaction and Redis Lua fenced operation executors that bind token advancement to
-  downstream side effects.
-- Hardened fenced operations for concurrent first-resource creation and rollback/error paths, with
-  JDBC and Redis concurrency integration coverage.

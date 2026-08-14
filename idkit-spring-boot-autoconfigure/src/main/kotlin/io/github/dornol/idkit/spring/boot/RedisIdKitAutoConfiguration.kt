@@ -21,7 +21,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.ThreadLocalRandom
 import io.lettuce.core.RedisURI
 
 @AutoConfiguration
@@ -94,9 +93,9 @@ class RedisIdKitAutoConfiguration {
         store: RedisWorkerIdLeaseStore,
         properties: IdKitProperties,
     ): WorkerIdLease {
-        validate(properties)
+        IdKitAutoConfigurationSupport.validateCommon(properties)
         IdKitGeneratorFactory.validate(properties)
-        sleepStartupJitter(properties.startupJitter.toMillis())
+        IdKitAutoConfigurationSupport.sleepStartupJitter(properties.startupJitter.toMillis())
         return acquire(store, properties)
     }
 
@@ -139,105 +138,20 @@ class RedisIdKitAutoConfiguration {
                 acquisitionRetryDelayMillis = properties.acquisitionRetryDelay.toMillis(),
             )
         }
-        var lastFailure: Throwable? = null
-        repeat(properties.acquisitionAttempts) { attempt ->
-            try {
+        val fixedWorkerId = requireNotNull(properties.workerId)
+        return IdKitAutoConfigurationSupport.acquireConfigured(
+            properties = properties,
+            backend = "Redis",
+            tryAcquire = { workerId ->
+                check(workerId == fixedWorkerId)
                 store.tryAcquire(
-                    workerId = properties.workerId!!,
+                    workerId = fixedWorkerId,
                     datacenterId = properties.datacenterId,
                     owner = properties.owner,
                     ttlMillis = properties.leaseTtl.toMillis(),
-                )?.let { return it }
-            } catch (failure: RuntimeException) {
-                lastFailure = failure
-            }
-            if (attempt + 1 < properties.acquisitionAttempts) {
-                sleepBeforeRetry(properties.acquisitionRetryDelay.toMillis())
-            }
-        }
-        error(
-            "Configured idkit worker identity is unavailable: " +
-                    "workerId=${properties.workerId}, datacenterId=${properties.datacenterId}" +
-                    (lastFailure?.let { "; lastFailure=${it.message}" } ?: ""),
+                )
+            },
         )
-    }
-
-    private fun sleepBeforeRetry(delayMillis: Long) {
-        if (delayMillis == 0L) return
-        try {
-            Thread.sleep(delayMillis)
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("Interrupted while retrying Redis worker lease acquisition", interrupted)
-        }
-    }
-
-    private fun validate(properties: IdKitProperties) {
-        validateLeaseNamespace(properties)
-        require(properties.workerCount > 0) { "idkit.worker-count must be > 0" }
-        require(properties.workerId == null || properties.workerId!! in 0 until properties.workerCount) {
-            "idkit.worker-id must be between 0 and worker-count - 1"
-        }
-        require(properties.datacenterId >= 0) { "idkit.datacenter-id must be >= 0" }
-        require(properties.owner.isNotBlank()) { "idkit.owner must not be blank" }
-        require(!properties.leaseTtl.isZero && !properties.leaseTtl.isNegative) { "idkit.lease-ttl must be positive" }
-        require(properties.heartbeatFailureThreshold in 1..2) {
-            "idkit.heartbeat-failure-threshold must be between 1 and 2 so the lease fails before TTL expiry"
-        }
-        validateHeartbeatInterval(properties)
-        require(!properties.backendOperationTimeout.isZero && !properties.backendOperationTimeout.isNegative) {
-            "idkit.backend-operation-timeout must be positive"
-        }
-        require(!properties.startupJitter.isNegative) {
-            "idkit.startup-jitter must not be negative"
-        }
-        require(properties.acquisitionAttempts in 1..10) { "idkit.acquisition-attempts must be between 1 and 10" }
-        require(!properties.acquisitionRetryDelay.isNegative) { "idkit.acquisition-retry-delay must not be negative" }
-        require(!properties.recovery.retryDelay.isZero && !properties.recovery.retryDelay.isNegative) {
-            "idkit.recovery.retry-delay must be positive"
-        }
-        require(!properties.recovery.retryJitter.isNegative) {
-            "idkit.recovery.retry-jitter must not be negative"
-        }
-        require(!properties.recovery.maxRetryDelay.isNegative && !properties.recovery.maxRetryDelay.isZero) {
-            "idkit.recovery.max-retry-delay must be positive"
-        }
-        require(properties.recovery.maxRetryDelay >= properties.recovery.retryDelay) {
-            "idkit.recovery.max-retry-delay must be >= retry-delay"
-        }
-    }
-
-    private fun validateHeartbeatInterval(properties: IdKitProperties) {
-        val interval = properties.heartbeatInterval ?: return
-        require(!interval.isZero && !interval.isNegative) {
-            "idkit.heartbeat-interval must be positive"
-        }
-        val intervalMillis = interval.toMillis()
-        require(
-            intervalMillis > 0 &&
-                    runCatching {
-                        Math.multiplyExact(intervalMillis, properties.heartbeatFailureThreshold.toLong())
-                    }.getOrDefault(Long.MAX_VALUE) < properties.leaseTtl.toMillis()
-        ) {
-            "idkit.heartbeat-interval and heartbeat-failure-threshold must detect lease loss before lease-ttl"
-        }
-    }
-
-    private fun validateLeaseNamespace(properties: IdKitProperties) {
-        require(properties.leaseNamespace?.matches(Regex("[A-Za-z_][A-Za-z0-9_]*")) != false) {
-            "idkit.lease-namespace must be a simple identifier"
-        }
-    }
-
-    private fun sleepStartupJitter(maxDelayMillis: Long) {
-        if (maxDelayMillis <= 0L) return
-        val delay = ThreadLocalRandom.current().nextLong(maxDelayMillis + 1)
-        try {
-            Thread.sleep(delay)
-        } catch (interrupted: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("Interrupted during idkit startup jitter", interrupted)
-        }
     }
 
     private fun IdKitProperties.Redis.keyPrefixForNamespace(namespace: String?): String =

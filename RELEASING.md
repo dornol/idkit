@@ -7,11 +7,13 @@ afterwards.
 
 ## Pre-release
 
-- [ ] `./gradlew build` is green locally (Temurin 11 via toolchain)
+- [ ] `./gradlew check --no-daemon -Didkit.requireIntegrationTests=true` is green locally
+- [ ] `./gradlew -p samples/spring-boot-consumer test --no-daemon` is green locally
 - [ ] Test CI is green on `origin/main` for the commit you're about to tag
 - [ ] `build.gradle.kts` `version = "X.Y.Z"` matches the tag you are about to create
 - [ ] `CHANGELOG.md` has an `## [X.Y.Z] - YYYY-MM-DD` section covering every
       user-visible change since the previous tag
+- [ ] `./gradlew verifyPublicationModules` reports all six Maven Central artifacts
 - [ ] No un-pushed commits on `main` — the workflow builds the tagged commit
       from `origin`, not your local working tree
 
@@ -42,9 +44,8 @@ the `version` in `build.gradle.kts`).
       https://github.com/dornol/idkit/actions/workflows/maven-publish.yml
 - [ ] Artifact appears on Central Portal (propagation can take up to ~1 h):
       https://central.sonatype.com/artifact/io.github.dornol/idkit
-- [ ] Create a GitHub Release from the tag and paste the matching
-      `CHANGELOG.md` section as the body — this is what appears under
-      "Releases" for the repo and what users subscribe to
+- [ ] Confirm the GitHub Release body contains the matching `CHANGELOG.md` section — the
+      workflow now copies it automatically when creating the release
 
 ## If something goes wrong
 

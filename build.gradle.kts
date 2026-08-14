@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "io.github.dornol"
-version = "3.1.0"
+version = "3.2.0"
 
 repositories {
     mavenCentral()
@@ -53,11 +53,7 @@ tasks.withType<org.gradle.testing.jacoco.tasks.JacocoCoverageVerification>().con
             limit {
                 counter = "LINE"
                 value = "COVEREDRATIO"
-                minimum = if (project.path == ":idkit-spring-boot-autoconfigure") {
-                    "0.70".toBigDecimal()
-                } else {
-                    "0.75".toBigDecimal()
-                }
+                minimum = "0.75".toBigDecimal()
             }
         }
     }
@@ -83,11 +79,7 @@ subprojects {
                 limit {
                     counter = "LINE"
                     value = "COVEREDRATIO"
-                    minimum = if (project.path == ":idkit-spring-boot-autoconfigure") {
-                        "0.70".toBigDecimal()
-                    } else {
-                        "0.75".toBigDecimal()
-                    }
+                    minimum = "0.75".toBigDecimal()
                 }
             }
         }

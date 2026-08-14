@@ -9,6 +9,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Redis-backed worker identity leases.
@@ -43,6 +44,8 @@ class RedisWorkerIdLeaseStore(
 
     private val activeLeases = ConcurrentHashMap.newKeySet<RedisWorkerIdLease>()
     private val closed = AtomicBoolean(false)
+    /** Prevents a wall-clock rollback from extending a locally held lease. */
+    private val effectiveClock = AtomicLong(System.currentTimeMillis())
 
     override fun tryAcquire(
         workerId: Int,
@@ -191,7 +194,7 @@ class RedisWorkerIdLeaseStore(
         private val storedToken = "$fencingToken|$token"
         private val valid = AtomicBoolean(true)
         private val heartbeatFailures = java.util.concurrent.atomic.AtomicInteger()
-        @Volatile private var leaseUntilMillis = System.currentTimeMillis() + ttlMillis
+        @Volatile private var leaseUntilMillis = effectiveNowMillis() + ttlMillis
         private val heartbeat = scheduler.scheduleAtFixedRate(
             { renew() },
             heartbeatPeriodMillis,
@@ -207,7 +210,7 @@ class RedisWorkerIdLeaseStore(
                 return valid.get()
             }
         override val remainingTtlMillis: Long
-            get() = (leaseUntilMillis - System.currentTimeMillis()).coerceAtLeast(0L)
+            get() = (leaseUntilMillis - effectiveNowMillis()).coerceAtLeast(0L)
 
         private fun renew() {
             if (!valid.get()) return
@@ -225,7 +228,7 @@ class RedisWorkerIdLeaseStore(
                         invalidate(IllegalStateException("Redis worker lease was lost"))
                     }
                 } else {
-                    leaseUntilMillis = System.currentTimeMillis() + ttlMillis
+                    leaseUntilMillis = effectiveNowMillis() + ttlMillis
                     heartbeatFailures.set(0)
                     metrics.heartbeatSucceeded()
                 }
@@ -272,6 +275,9 @@ class RedisWorkerIdLeaseStore(
         if (!closed.compareAndSet(false, true)) return
         activeLeases.toList().forEach { it.close() }
     }
+
+    private fun effectiveNowMillis(): Long =
+        effectiveClock.updateAndGet { maxOf(it, System.currentTimeMillis()) }
 
     private companion object {
         private const val ACQUIRE_SCRIPT =

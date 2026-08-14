@@ -8,7 +8,8 @@ Provided generators:
 - **UUID v7** (`java.util.UUID`) — RFC 9562 §6.2 Method 2 implementation with intra-millisecond monotonicity.
 - **ULID** (`String`, 26 chars) — Crockford Base32 encoded, lexicographically sortable, monotonic within a millisecond.
 - **NanoID** (`String`, 21 chars by default) — compact, URL-safe, cryptographically random. Not time-ordered — fills the "opaque public id" slot.
-- **Redis worker leases** (optional `idkit-redis` module) — automatic worker ID reservation with TTL and heartbeat.
+- **JDBC / Redis worker leases** (optional modules) — automatic worker ID reservation with TTL,
+  heartbeat, recovery, namespaces, and fencing tokens.
 
 ## Project info
 
@@ -16,10 +17,14 @@ Provided generators:
 - Build JDK: 17 or newer; CI verifies JDK 17, 21, and 25
 - Kotlin: 2.3.21, Gradle Kotlin DSL
 - Tests: JUnit 5
-- Coordinates: `io.github.dornol:idkit:3.1.0`
+- Coordinates: `io.github.dornol:idkit:3.2.0`
 
 > **Upgrading from 2.x?** 3.0.0 changes the default clock-regression response
 > for Snowflake/Flake (see the `[3.0.0]` section in [CHANGELOG.md](CHANGELOG.md)).
+
+> **Upgrading from 3.1.0?** 3.2.0 adds automatic lease recovery, recovery backoff/jitter, lease
+> namespaces, startup jitter, and stronger failure handling. Existing 3.1.0 lease integrations
+> remain source-compatible.
 
 > **Upgrading from 3.0.0?** 3.1.0 adds optional JDBC/Redis lease modules, fencing tokens, and
 > operational callbacks. Existing JDBC lease tables are upgraded automatically when initialized;
@@ -36,14 +41,14 @@ Fetch the artifact from Maven Central.
 Gradle (Kotlin DSL):
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.1.0")
+    implementation("io.github.dornol:idkit:3.2.0")
 }
 ```
 
 Gradle (Groovy):
 ```groovy
 dependencies {
-    implementation 'io.github.dornol:idkit:3.1.0'
+    implementation 'io.github.dornol:idkit:3.2.0'
 }
 ```
 
@@ -91,7 +96,7 @@ Maven:
 <dependency>
   <groupId>io.github.dornol</groupId>
   <artifactId>idkit</artifactId>
-  <version>3.1.0</version>
+  <version>3.2.0</version>
 </dependency>
 ```
 
@@ -104,7 +109,7 @@ JDBC:
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.1.0")
+    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.2.0")
 }
 ```
 
@@ -112,7 +117,7 @@ Redis:
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.1.0")
+    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.2.0")
 }
 ```
 
@@ -404,8 +409,8 @@ For Lettuce-based Redis integration, add the optional module:
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.1.0")
-    implementation("io.github.dornol:idkit-redis:3.1.0")
+    implementation("io.github.dornol:idkit:3.2.0")
+    implementation("io.github.dornol:idkit-redis:3.2.0")
     implementation("io.lettuce:lettuce-core:7.6.0.RELEASE")
 }
 ```
@@ -498,8 +503,8 @@ For environments that already have a relational database, use the optional `idki
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.1.0")
-    implementation("io.github.dornol:idkit-jdbc:3.1.0")
+    implementation("io.github.dornol:idkit:3.2.0")
+    implementation("io.github.dornol:idkit-jdbc:3.2.0")
     runtimeOnly("org.postgresql:postgresql:42.7.7") // or the JDBC driver for MySQL, MariaDB, SQL Server, or Oracle
 }
 ```
