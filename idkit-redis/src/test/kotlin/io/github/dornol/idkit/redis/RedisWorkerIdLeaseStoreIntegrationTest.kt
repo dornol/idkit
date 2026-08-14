@@ -243,6 +243,23 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
         }
     }
 
+    @Test
+    fun `scheduler registration failure rolls back the acquired Redis lease`() {
+        val rejectedScheduler = Executors.newSingleThreadScheduledExecutor()
+        rejectedScheduler.shutdownNow()
+        val rejectedStore = RedisWorkerIdLeaseStore(
+            connection.sync(),
+            rejectedScheduler,
+            keyPrefix = "test:scheduler-rejected",
+        )
+
+        assertThrows<RuntimeException> {
+            rejectedStore.tryAcquire(0, 13, "scheduler-rejected", 5_000)
+        }
+        assertFalse(rejectedStore.inspect(0, 13).isHeld)
+        connection.sync().del("test:scheduler-rejected:13:0", "test:scheduler-rejected:fence:13:0")
+    }
+
     private fun eventually(timeoutMillis: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
         while (System.nanoTime() < deadline) {

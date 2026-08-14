@@ -188,10 +188,17 @@ class JdbcWorkerIdLeaseStore(
                     statement.executeUpdate()
                 }
                 connection.commit()
-                return JdbcWorkerIdLease(workerId, datacenterId, token, newFencingToken, ttlMillis, until).also {
-                    activeLeases += it
-                    metrics.acquired()
-                    metrics.activeLeases(activeLeases.size)
+                return try {
+                    JdbcWorkerIdLease(workerId, datacenterId, token, newFencingToken, ttlMillis, until).also {
+                        activeLeases += it
+                        metrics.acquired()
+                        metrics.activeLeases(activeLeases.size)
+                    }
+                } catch (failure: RuntimeException) {
+                    runCatching { releaseAcquiredLease(workerId, datacenterId, token) }
+                        .onFailure(failure::addSuppressed)
+                    metrics.acquisitionFailed()
+                    throw failure
                 }
             } catch (ex: Exception) {
                 metrics.acquisitionFailed()
@@ -236,6 +243,19 @@ class JdbcWorkerIdLeaseStore(
         } catch (interrupted: InterruptedException) {
             Thread.currentThread().interrupt()
             throw IllegalStateException("Interrupted while retrying JDBC worker lease acquisition", interrupted)
+        }
+    }
+
+    private fun releaseAcquiredLease(workerId: Int, datacenterId: Int, token: String) {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                "UPDATE $tableName SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = ? AND worker_id = ? AND owner_token = ?",
+            ).use { statement ->
+                statement.setInt(1, datacenterId)
+                statement.setInt(2, workerId)
+                statement.setString(3, token)
+                statement.executeUpdate()
+            }
         }
     }
 

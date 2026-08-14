@@ -255,6 +255,24 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
     }
 
     @Test
+    fun `scheduler registration failure rolls back the acquired JDBC lease`() {
+        store.initialize(1, 33)
+        val rejectedScheduler = Executors.newSingleThreadScheduledExecutor()
+        rejectedScheduler.shutdownNow()
+        val rejectedStore = JdbcWorkerIdLeaseStore(
+            dataSource = dataSource,
+            scheduler = rejectedScheduler,
+            dialect = JdbcLeaseDialect.POSTGRESQL,
+            tableName = "idkit_test_worker_lease",
+        )
+
+        assertThrows<RuntimeException> {
+            rejectedStore.tryAcquire(0, 33, "scheduler-rejected", 5_000)
+        }
+        assertFalse(store.inspect(0, 33)!!.isHeld)
+    }
+
+    @Test
     fun `heartbeat failure invalidates lease and generator fails closed`() {
         store.initialize(1, 4)
         val failed = AtomicBoolean(false)

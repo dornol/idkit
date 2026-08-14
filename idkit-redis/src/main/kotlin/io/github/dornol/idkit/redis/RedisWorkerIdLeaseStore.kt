@@ -61,10 +61,17 @@ class RedisWorkerIdLeaseStore(
         )
         if (acquired <= 0L) { metrics.acquisitionFailed(); return null }
 
-        return RedisWorkerIdLease(workerId, datacenterId, key, token, acquired, ttlMillis).also {
-            activeLeases += it
-            metrics.acquired()
-            metrics.activeLeases(activeLeases.size)
+        return try {
+            RedisWorkerIdLease(workerId, datacenterId, key, token, acquired, ttlMillis).also {
+                activeLeases += it
+                metrics.acquired()
+                metrics.activeLeases(activeLeases.size)
+            }
+        } catch (failure: RuntimeException) {
+            runCatching { releaseAcquiredLease(key, "$acquired|$token") }
+                .onFailure(failure::addSuppressed)
+            metrics.acquisitionFailed()
+            throw failure
         }
     }
 
@@ -126,6 +133,15 @@ class RedisWorkerIdLeaseStore(
             Thread.currentThread().interrupt()
             throw IllegalStateException("Interrupted while retrying Redis worker lease acquisition", interrupted)
         }
+    }
+
+    private fun releaseAcquiredLease(key: String, storedToken: String) {
+        commands.eval<Long>(
+            RELEASE_SCRIPT,
+            ScriptOutputType.INTEGER,
+            arrayOf(key),
+            storedToken,
+        )
     }
 
     private fun key(datacenterId: Int, workerId: Int): String =
