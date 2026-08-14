@@ -2,6 +2,7 @@ package io.github.dornol.idkit.redis
 
 import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.worker.LeasedIdGenerator
+import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertDoesNotThrow
@@ -264,6 +265,44 @@ class RedisWorkerIdLeaseStoreIntegrationTest {
         assertFalse(rejectedStore.inspect(0, 13).isHeld)
         connection.sync().del("test:scheduler-rejected:13:0", "test:scheduler-rejected:fence:13:0")
     }
+
+    @Test
+    fun `recovery reacquires another Redis worker after the current lease is lost`() {
+        val keyPrefix = "test:recovery"
+        val initialStore = RedisWorkerIdLeaseStore(connection.sync(), scheduler, keyPrefix = keyPrefix)
+        val initialLease = initialStore.tryAcquire(0, 40, "recovery-original", 2_000)!!
+        val generator = RecoveringLeasedIdGenerator(
+            initialLease = initialLease,
+            initialGenerator = workerGenerator(initialLease),
+            scheduler = scheduler,
+            recoveryRetryDelayMillis = 50,
+            acquire = {
+                initialStore.acquireAny(2, 40, "recovery-replacement", 2_000)
+            },
+            generatorFactory = ::workerGenerator,
+        )
+
+        try {
+            assertEquals(0L, generator.nextId())
+            connection.sync().set("$keyPrefix:40:0", "foreign-owner")
+
+            eventually { generator.currentLease.workerId == 1 }
+            assertEquals(1L, generator.nextId())
+        } finally {
+            generator.close()
+            connection.sync().del(
+                "$keyPrefix:40:0",
+                "$keyPrefix:40:1",
+                "$keyPrefix:fence:40:0",
+                "$keyPrefix:fence:40:1",
+            )
+        }
+    }
+
+    private fun workerGenerator(lease: io.github.dornol.idkit.worker.WorkerIdLease): IdGenerator<Long> =
+        object : IdGenerator<Long> {
+            override fun nextId(): Long = lease.workerId.toLong()
+        }
 
     private fun eventually(timeoutMillis: Long = 5_000, condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)

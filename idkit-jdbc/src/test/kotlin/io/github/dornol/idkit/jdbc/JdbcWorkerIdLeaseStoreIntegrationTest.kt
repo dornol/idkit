@@ -2,6 +2,7 @@ package io.github.dornol.idkit.jdbc
 
 import io.github.dornol.idkit.worker.LeasedIdGenerator
 import io.github.dornol.idkit.worker.LeaseClock
+import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import io.github.dornol.idkit.IdGenerator
 import io.github.dornol.idkit.worker.FencedOperationResult
@@ -275,6 +276,52 @@ class JdbcWorkerIdLeaseStoreIntegrationTest {
             rejectedStore.tryAcquire(0, 33, "scheduler-rejected", 5_000)
         }
         assertFalse(store.inspect(0, 33)!!.isHeld)
+    }
+
+    @Test
+    fun `recovery reacquires another JDBC worker after the current lease is lost`() {
+        val datacenterId = 40
+        store.initialize(2, datacenterId)
+        val initialLease = store.tryAcquire(0, datacenterId, "recovery-original", 2_000)!!
+        val generator = RecoveringLeasedIdGenerator(
+            initialLease = initialLease,
+            initialGenerator = workerGenerator(initialLease),
+            scheduler = scheduler,
+            recoveryRetryDelayMillis = 50,
+            acquire = {
+                store.acquireAny(2, datacenterId, "recovery-replacement", 2_000)
+            },
+            generatorFactory = ::workerGenerator,
+        )
+
+        try {
+            assertEquals(0L, generator.nextId())
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "UPDATE idkit_test_worker_lease SET owner_token = 'foreign-owner' WHERE datacenter_id = ? AND worker_id = 0",
+                ).use { statement ->
+                    statement.setInt(1, datacenterId)
+                    statement.executeUpdate()
+                }
+            }
+
+            eventually { generator.currentLease.workerId == 1 }
+            assertEquals(1L, generator.nextId())
+        } finally {
+            generator.close()
+            dataSource.connection.use { connection ->
+                connection.prepareStatement(
+                    "UPDATE idkit_test_worker_lease SET owner_token = NULL, lease_until = NULL WHERE datacenter_id = ?",
+                ).use { statement ->
+                    statement.setInt(1, datacenterId)
+                    statement.executeUpdate()
+                }
+            }
+        }
+    }
+
+    private fun workerGenerator(lease: WorkerIdLease): IdGenerator<Long> = object : IdGenerator<Long> {
+        override fun nextId(): Long = lease.workerId.toLong()
     }
 
     @Test
