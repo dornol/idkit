@@ -28,7 +28,6 @@ import javax.sql.DataSource
 
 @AutoConfiguration(after = [DataSourceAutoConfiguration::class])
 @ConditionalOnClass(JdbcWorkerIdLeaseStore::class)
-@ConditionalOnBean(DataSource::class)
 @ConditionalOnProperty(prefix = "idkit", name = ["backend"], havingValue = "jdbc")
 @EnableConfigurationProperties(IdKitProperties::class)
 class JdbcIdKitAutoConfiguration {
@@ -49,6 +48,7 @@ class JdbcIdKitAutoConfiguration {
         }
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnBean(DataSource::class)
     @ConditionalOnMissingBean(JdbcWorkerIdLeaseStore::class)
     fun jdbcWorkerIdLeaseStore(
         applicationContext: ApplicationContext,
@@ -81,6 +81,7 @@ class JdbcIdKitAutoConfiguration {
     fun leaseRecoveryMetrics(): LeaseRecoveryMetrics = NoopLeaseRecoveryMetrics
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnBean(JdbcWorkerIdLeaseStore::class)
     fun idKitWorkerIdLease(
         store: JdbcWorkerIdLeaseStore,
         properties: IdKitProperties,
@@ -99,6 +100,7 @@ class JdbcIdKitAutoConfiguration {
     }
 
     @Bean(destroyMethod = "close")
+    @ConditionalOnBean(JdbcWorkerIdLeaseStore::class)
     @ConditionalOnMissingBean(IdGenerator::class)
     fun idGenerator(
         lease: WorkerIdLease,
