@@ -43,7 +43,7 @@ signing {
 
 mavenPublishing {
     signAllPublications()
-    publishToMavenCentral()
+    publishToMavenCentral(automaticRelease = true)
     coordinates("io.github.dornol", "idkit-redis", "$version")
 
     pom {

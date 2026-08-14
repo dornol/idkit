@@ -46,7 +46,7 @@ tasks.test { useJUnitPlatform() }
 
 mavenPublishing {
     signAllPublications()
-    publishToMavenCentral()
+    publishToMavenCentral(automaticRelease = true)
     coordinates("io.github.dornol", "idkit-spring-boot-autoconfigure", "$version")
     pom {
         name = "idkit-spring-boot-autoconfigure"

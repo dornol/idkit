@@ -17,13 +17,16 @@ Provided generators:
 - Build JDK: 17 or newer; CI verifies JDK 17, 21, and 25
 - Kotlin: 2.3.21, Gradle Kotlin DSL
 - Tests: JUnit 5
-- Coordinates: `io.github.dornol:idkit:3.2.1`
+- Coordinates: `io.github.dornol:idkit:3.2.2`
 
 > **Upgrading from 2.x?** 3.0.0 changes the default clock-regression response
 > for Snowflake/Flake (see the `[3.0.0]` section in [CHANGELOG.md](CHANGELOG.md)).
 
 > **Upgrading from 3.2.0?** 3.2.1 fixes JDBC auto-configuration with Spring Boot Docker Compose
 > DataSource discovery. Existing 3.2.0 lease configuration remains source-compatible.
+
+> **Upgrading from 3.2.1?** 3.2.2 adds Spring Boot 4 JDBC auto-configuration compatibility and
+> automatic Maven Central release after Portal validation.
 
 > **Upgrading from 3.1.0?** 3.2.0 adds automatic lease recovery, recovery backoff/jitter, lease
 > namespaces, startup jitter, and stronger failure handling. Existing 3.1.0 lease integrations
@@ -44,14 +47,14 @@ Fetch the artifact from Maven Central.
 Gradle (Kotlin DSL):
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.2.1")
+    implementation("io.github.dornol:idkit:3.2.2")
 }
 ```
 
 Gradle (Groovy):
 ```groovy
 dependencies {
-    implementation 'io.github.dornol:idkit:3.2.1'
+    implementation 'io.github.dornol:idkit:3.2.2'
 }
 ```
 
@@ -99,7 +102,7 @@ Maven:
 <dependency>
   <groupId>io.github.dornol</groupId>
   <artifactId>idkit</artifactId>
-  <version>3.2.1</version>
+  <version>3.2.2</version>
 </dependency>
 ```
 
@@ -112,7 +115,7 @@ JDBC:
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.2.1")
+    implementation("io.github.dornol:idkit-spring-boot-starter-jdbc:3.2.2")
 }
 ```
 
@@ -120,7 +123,7 @@ Redis:
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.2.1")
+    implementation("io.github.dornol:idkit-spring-boot-starter-redis:3.2.2")
 }
 ```
 
@@ -412,8 +415,8 @@ For Lettuce-based Redis integration, add the optional module:
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.2.1")
-    implementation("io.github.dornol:idkit-redis:3.2.1")
+    implementation("io.github.dornol:idkit:3.2.2")
+    implementation("io.github.dornol:idkit-redis:3.2.2")
     implementation("io.lettuce:lettuce-core:7.6.0.RELEASE")
 }
 ```
@@ -506,8 +509,8 @@ For environments that already have a relational database, use the optional `idki
 
 ```kotlin
 dependencies {
-    implementation("io.github.dornol:idkit:3.2.1")
-    implementation("io.github.dornol:idkit-jdbc:3.2.1")
+    implementation("io.github.dornol:idkit:3.2.2")
+    implementation("io.github.dornol:idkit-jdbc:3.2.2")
     runtimeOnly("org.postgresql:postgresql:42.7.7") // or the JDBC driver for MySQL, MariaDB, SQL Server, or Oracle
 }
 ```

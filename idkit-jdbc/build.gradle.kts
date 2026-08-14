@@ -32,7 +32,7 @@ tasks.test { useJUnitPlatform() }
 signing { sign(publishing.publications) }
 mavenPublishing {
     signAllPublications()
-    publishToMavenCentral()
+    publishToMavenCentral(automaticRelease = true)
     coordinates("io.github.dornol", "idkit-jdbc", "$version")
     pom {
         name = "idkit-jdbc"

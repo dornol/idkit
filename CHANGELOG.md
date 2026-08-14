@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No unreleased changes.
 
+## [3.2.2] - 2026-08-14
+
+### Fixed
+
+- Spring Boot 4 JDBC auto-configuration now orders itself after the Boot 4 `DataSource`
+  auto-configuration without linking against the Boot 3-only class name.
+- All Maven Central publications now use automatic release after Portal validation.
+
 ## [3.2.1] - 2026-08-14
 
 ### Fixed
@@ -267,6 +275,7 @@ try {
 - Initial `SnowflakeIdGenerator` with Twitter Snowflake bit layout (41/5/5/12).
 - Vanniktech Maven Publish plugin for Central Publishing Portal.
 
+[3.2.2]: https://github.com/dornol/idkit/releases/tag/3.2.2
 [3.2.1]: https://github.com/dornol/idkit/releases/tag/3.2.1
 [3.2.0]: https://github.com/dornol/idkit/releases/tag/3.2.0
 [3.1.0]: https://github.com/dornol/idkit/releases/tag/3.1.0
