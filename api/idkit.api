@@ -42,6 +42,7 @@ public final class io/github/dornol/idkit/IdKitGenerators {
 	public static final fun snowflake (Lio/github/dornol/idkit/worker/WorkerIdLease;)Lio/github/dornol/idkit/worker/LeasedIdGenerator;
 	public static final fun ulid ()Lio/github/dornol/idkit/ulid/UlidIdGenerator;
 	public static final fun uuidV7 ()Lio/github/dornol/idkit/uuidv7/UuidV7IdGenerator;
+	public static final fun uuidV7 (Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;)Lio/github/dornol/idkit/uuidv7/UuidV7IdGenerator;
 }
 
 public abstract interface class io/github/dornol/idkit/IdParser {
@@ -221,10 +222,19 @@ public final class io/github/dornol/idkit/uuidv7/UuidV7Components {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/dornol/idkit/uuidv7/UuidV7CounterMode : java/lang/Enum {
+	public static final field MONOTONIC Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;
+	public static final field RANDOM Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;
+	public static fun values ()[Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;
+}
+
 public class io/github/dornol/idkit/uuidv7/UuidV7IdGenerator : io/github/dornol/idkit/IdGenerator {
 	public fun <init> ()V
 	public fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;)V
-	public synthetic fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;)V
+	public synthetic fun <init> (Ljava/time/Clock;Lio/github/dornol/idkit/IdGeneratorListener;Lio/github/dornol/idkit/uuidv7/UuidV7CounterMode;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	protected fun currentEpochMillis ()J
 	public synthetic fun nextId ()Ljava/lang/Object;
 	public final fun nextId ()Ljava/util/UUID;

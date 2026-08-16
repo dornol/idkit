@@ -106,6 +106,20 @@ Maven:
 </dependency>
 ```
 
+### Which generator should I use?
+
+| Need | Recommended generator |
+| --- | --- |
+| Numeric, compact, time-sortable IDs | Snowflake or Flake |
+| Standard UUID representation with time ordering | UUID v7 |
+| String IDs with lexicographic time ordering | ULID |
+| Short opaque public IDs | NanoID |
+| Worker IDs shared across application instances | JDBC/Redis lease module |
+
+Use the local generators when each process can generate independently. Add a lease backend when
+multiple processes share the same Snowflake/Flake worker-id space; ID generation itself remains
+local after the lease is acquired.
+
 ### Spring Boot
 
 For Spring Boot applications, use the backend-specific starter. Both starters may be present
@@ -383,10 +397,26 @@ fun main() {
 ```
 
 Monotonicity (since 2.0.0):
-- The 12-bit `rand_a` region is repurposed as a **fixed-length dedicated monotonic counter** (RFC 9562 Method 1).
+- By default, the 12-bit `rand_a` region is repurposed as a **fixed-length dedicated monotonic counter** (RFC 9562 Method 1).
 - `(timestamp:52 | counter:12)` is packed into a single `AtomicLong` and updated atomically via CAS.
 - When the counter overflows within the same millisecond, the timestamp is borrowed 1 ms forward and the counter resets to 0. Once the real clock catches up, the stored timestamp realigns naturally.
 - As a result, UUIDs produced by the same generator are **strictly increasing** when compared by `mostSignificantBits` — friendly to database index locality.
+- Set `counterMode = UuidV7CounterMode.RANDOM` to populate `rand_a` randomly. This preserves UUID v7 validity and uniqueness characteristics, but does not guarantee ordering within one millisecond.
+
+For Java callers, the same choice is available through the factory:
+
+```java
+UuidV7IdGenerator generator = IdKitGenerators.uuidV7(UuidV7CounterMode.RANDOM);
+```
+
+With Spring Boot:
+
+```yaml
+idkit:
+  generator:
+    type: UUID_V7
+    uuid-v7-counter-mode: RANDOM # default: MONOTONIC
+```
 
 ## Parsers
 
@@ -776,7 +806,13 @@ Run:
 ```bash
 ./gradlew.bat test  # Windows
 ./gradlew test      # macOS / Linux
+
+# Docker-backed JDBC/Redis integration tests
+./gradlew integrationTest -Didkit.requireIntegrationTests=true
 ```
+
+The regular `test` task runs fast unit and component tests. Docker-backed tests whose names end
+in `IntegrationTest` run through `integrationTest`; the CI build enables them explicitly.
 
 ## Performance tips
 

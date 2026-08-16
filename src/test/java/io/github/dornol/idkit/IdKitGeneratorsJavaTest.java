@@ -1,6 +1,7 @@
 package io.github.dornol.idkit;
 
 import io.github.dornol.idkit.flake.FlakeIdGenerator;
+import io.github.dornol.idkit.uuidv7.UuidV7CounterMode;
 import io.github.dornol.idkit.worker.LeasedIdGenerator;
 import io.github.dornol.idkit.worker.RecoveringLeasedIdGenerator;
 import io.github.dornol.idkit.worker.WorkerIdLease;
@@ -49,6 +50,7 @@ class IdKitGeneratorsJavaTest {
         assertEquals(26, IdKitGenerators.ulid().nextId().length());
         assertEquals(21, IdKitGenerators.nanoId().nextId().length());
         assertEquals(7, IdKitGenerators.uuidV7().nextId().version());
+        assertEquals(7, IdKitGenerators.uuidV7(UuidV7CounterMode.RANDOM).nextId().version());
     }
 
     @Test

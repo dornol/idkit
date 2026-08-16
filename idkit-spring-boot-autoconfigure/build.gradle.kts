@@ -42,7 +42,30 @@ java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
 }
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    exclude("**/*IntegrationTest.class")
+}
+
+val integrationTest by tasks.registering(Test::class) {
+    description = "Runs Docker-backed Spring Boot integration tests."
+    group = "verification"
+    useJUnitPlatform()
+    include("**/*IntegrationTest.class")
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    shouldRunAfter(tasks.test)
+}
+
+tasks.named("check") { dependsOn(integrationTest) }
+
+tasks.withType<org.gradle.testing.jacoco.tasks.JacocoReport>().configureEach {
+    executionData(layout.buildDirectory.file("jacoco/integrationTest.exec"))
+}
+tasks.withType<org.gradle.testing.jacoco.tasks.JacocoCoverageVerification>().configureEach {
+    dependsOn(integrationTest)
+    executionData(layout.buildDirectory.file("jacoco/integrationTest.exec"))
+}
 
 mavenPublishing {
     signAllPublications()

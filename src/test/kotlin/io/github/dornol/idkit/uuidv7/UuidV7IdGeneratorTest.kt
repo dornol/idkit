@@ -2,6 +2,7 @@ package io.github.dornol.idkit.uuidv7
 
 import io.github.dornol.idkit.testing.TestClock
 import io.github.dornol.idkit.testutil.collectConcurrently
+import io.github.dornol.idkit.IdGeneratorListener
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -12,6 +13,41 @@ import java.time.Instant
 import java.util.UUID
 
 class UuidV7IdGeneratorTest {
+
+    @Test
+    fun `legacy clock and listener constructor keeps monotonic mode`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock, IdGeneratorListener.NOOP)
+
+        val first = gen.nextId()
+        val second = gen.nextId()
+
+        assertTrue(second.mostSignificantBits > first.mostSignificantBits)
+    }
+
+    @Test
+    fun `random mode does not reuse a deterministic monotonic counter`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock = clock, counterMode = UuidV7CounterMode.RANDOM)
+
+        val ids = (1..64).map { gen.nextId() }
+        val counters = ids.map { it.mostSignificantBits and 0xFFFL }
+
+        assertEquals(64, ids.toSet().size)
+        assertTrue(counters.any { it != 0L })
+        assertTrue(counters.zipWithNext().any { (a, b) -> b <= a })
+    }
+
+    @Test
+    fun `random mode preserves timestamp during fixed clock generation`() {
+        val clock = TestClock(Instant.parse("2024-01-15T00:00:00Z"))
+        val gen = UuidV7IdGenerator(clock = clock, counterMode = UuidV7CounterMode.RANDOM)
+
+        val timestamps = (1..100).map { UuidV7Parser.rawTimestampOf(gen.nextId()) }
+
+        assertEquals(1, timestamps.toSet().size)
+        assertEquals(clock.now(), timestamps.first())
+    }
 
     @Test
     fun `rejects timestamps outside the UUID v7 48-bit range`() {
