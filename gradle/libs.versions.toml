@@ -13,7 +13,7 @@ oracle = "23.8.0.25.04"
 lettuce = "7.6.0.RELEASE"
 springBoot = "3.4.5"
 springFramework = "6.2.6"
-hibernateValidator = "8.0.1.Final"
+hibernateValidator = "9.1.3.Final"
 expressly = "5.0.0"
 slf4j = "2.0.17"
 
