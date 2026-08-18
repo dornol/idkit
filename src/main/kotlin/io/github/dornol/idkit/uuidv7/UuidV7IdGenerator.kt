@@ -51,6 +51,16 @@ open class UuidV7IdGenerator(
 ) : IdGenerator<UUID> {
 
     /**
+     * Binary-compatible constructor retained for callers compiled against versions before the
+     * configurable counter mode was introduced.
+     */
+    constructor(clock: Clock, listener: IdGeneratorListener) : this(
+        clock = clock,
+        listener = listener,
+        counterMode = UuidV7CounterMode.MONOTONIC,
+    )
+
+    /**
      * Packed state `(timestamp:52bit | counter:12bit)`.
      *
      * Updated via CAS on a single [AtomicLong] so the timestamp and counter advance atomically.

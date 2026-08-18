@@ -5,6 +5,7 @@ import io.github.dornol.idkit.flake.SnowflakeIdGenerator
 import io.github.dornol.idkit.nanoid.NanoIdGenerator
 import io.github.dornol.idkit.ulid.UlidIdGenerator
 import io.github.dornol.idkit.uuidv7.UuidV7IdGenerator
+import io.github.dornol.idkit.uuidv7.UuidV7CounterMode
 import io.github.dornol.idkit.worker.LeasedIdGenerator
 import io.github.dornol.idkit.worker.WorkerIdLease
 import java.time.Duration
@@ -15,6 +16,11 @@ object IdKitGenerators {
     /** Creates a UUID v7 generator with the default UTC clock. */
     @JvmStatic
     fun uuidV7(): UuidV7IdGenerator = UuidV7IdGenerator()
+
+    /** Creates a UUID v7 generator with an explicit rand_a counter policy. */
+    @JvmStatic
+    fun uuidV7(counterMode: UuidV7CounterMode): UuidV7IdGenerator =
+        UuidV7IdGenerator(counterMode = counterMode)
 
     /** Creates a monotonic ULID generator with the default UTC clock. */
     @JvmStatic
